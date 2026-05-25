@@ -9,7 +9,7 @@ import Footer from "./components/Footer"
 const TABS = ["Build", "ATS Score", "Suggestions"]
 
 async function callGroq(prompt, systemPrompt) {
-  const res = await fetch("http://localhost:5000/api/generate", {
+  const res = await fetch(`${BACKEND_URL}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, systemPrompt })
@@ -18,7 +18,7 @@ async function callGroq(prompt, systemPrompt) {
   return data.choices?.[0]?.message?.content || ""
 }
 
-const BACKEND_URL = "http://localhost:5000"
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000"
 
 async function saveResumeToDB(name, data) {
   const res = await fetch(`${BACKEND_URL}/resumes`, {
@@ -307,10 +307,11 @@ Return ONLY a JSON object with no markdown or backticks:
   async function handleFetchResumes() {
     try {
       const data = await fetchResumesFromDB()
-      setSavedResumes(data)
+      setSavedResumes(Array.isArray(data) ? data : [])
       setShowSaved(true)
     } catch (e) {
       setSavedResumes([])
+      setShowSaved(true)
     }
   }
 
