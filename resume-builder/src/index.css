@@ -1,0 +1,81 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+* {
+  scrollbar-width: none;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-weight: 450;
+}
+
+input, textarea, button {
+  font-weight: 450;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+button {
+  transition: opacity 0.15s, transform 0.1s, background 0.15s, border-color 0.15s !important;
+  font-weight: 600 !important;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.resume-fade-in {
+  animation: fadeInUp 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.app-fade-in {
+  animation: fadeInUp 0.7s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+}

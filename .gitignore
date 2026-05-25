@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+resume-builder/node_modules/
+resume-backend/node_modules/
+
+# Environment variables (CRITICAL — never push these)
+.env
+resume-builder/.env
+resume-backend/.env
+
+# Build outputs
+dist/
+build/
+resume-builder/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
