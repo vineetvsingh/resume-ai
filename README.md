@@ -174,3 +174,5 @@ Shambhunath Institute of Engineering Technology, Prayagraj
 ## License
 
 This project is built for academic purposes as part of a B.Tech final year submission.
+
+**Live Demo:** [resume-ai-xi-fawn.vercel.app](https://resume-ai-xi-fawn.vercel.app)
