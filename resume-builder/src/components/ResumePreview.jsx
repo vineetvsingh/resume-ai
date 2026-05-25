@@ -181,22 +181,22 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: "12px", color: theme.textSecondary }}>Generated Resume</span>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button onClick={onScoreClick} className="resume-btn-secondary" style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+        <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "4px", flexWrap: "nowrap" }}>
+          <button onClick={onScoreClick} className="resume-btn-secondary" style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
             Score this →
           </button>
-          <button onClick={onSaveClick} style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+          <button onClick={onSaveClick} style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
             {isLoaded ? "Update" : "Save Resume"}
           </button>
           {isLoaded && (
-            <button onClick={onSaveAsNewClick} style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+            <button onClick={onSaveAsNewClick} style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
               Save as New
             </button>
           )}
-          <button onClick={handleDownload} style={{ fontSize: "12px", padding: "6px 14px", borderRadius: "6px", border: "none", background: theme.buttonBg, color: theme.buttonText, cursor: "pointer", fontWeight: 600, fontFamily: "inherit", transition: "all 0.15s" }}>
+          <button onClick={handleDownload} style={{ fontSize: "11px", padding: "6px 10px", borderRadius: "6px", border: "none", background: theme.buttonBg, color: theme.buttonText, cursor: "pointer", fontWeight: 600, fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
             Download PDF
           </button>
-          <button onClick={onClearClick} style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid rgba(220,38,38,0.3)", background: "transparent", color: "#dc2626", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+          <button onClick={onClearClick} style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: "1px solid rgba(220,38,38,0.3)", background: "transparent", color: "#dc2626", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
             Clear
           </button>
         </div>
