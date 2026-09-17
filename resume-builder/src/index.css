@@ -65,27 +65,3 @@ button:active:not(:disabled) {
 .app-fade-in {
   animation: fadeInUp 0.7s cubic-bezier(0.25, 1, 0.5, 1);
 }
-
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-
-::view-transition-old(root) {
-  z-index: 1;
-}
-
-::view-transition-new(root) {
-  z-index: 2;
-  animation: theme-circle-reveal 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes theme-circle-reveal {
-  from {
-    clip-path: circle(0px at var(--theme-toggle-x, 50%) var(--theme-toggle-y, 50%));
-  }
-  to {
-    clip-path: circle(var(--theme-toggle-r, 150%) at var(--theme-toggle-x, 50%) var(--theme-toggle-y, 50%));
-  }
-}
