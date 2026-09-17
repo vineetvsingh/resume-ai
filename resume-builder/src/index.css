@@ -65,3 +65,17 @@ button:active:not(:disabled) {
 .app-fade-in {
   animation: fadeInUp 0.7s cubic-bezier(0.25, 1, 0.5, 1);
 }
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+}
