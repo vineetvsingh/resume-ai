@@ -342,23 +342,11 @@ Return ONLY a JSON object with no markdown or backticks:
       setThemeMode(themeMode === "dark" ? "light" : "dark")
       return
     }
-    const transition = document.startViewTransition(() => {
+    document.documentElement.style.setProperty("--theme-toggle-x", `${x}px`)
+    document.documentElement.style.setProperty("--theme-toggle-y", `${y}px`)
+    document.documentElement.style.setProperty("--theme-toggle-r", `${endRadius}px`)
+    document.startViewTransition(() => {
       setThemeMode(themeMode === "dark" ? "light" : "dark")
-    })
-    transition.ready.then(() => {
-      document.documentElement.animate(
-        {
-          clipPath: [
-            `circle(0px at ${x}px ${y}px)`,
-            `circle(${endRadius}px at ${x}px ${y}px)`
-          ]
-        },
-        {
-          duration: 600,
-          easing: "cubic-bezier(0.4, 0, 0.2, 1)",
-          pseudoElement: "::view-transition-new(root)"
-        }
-      )
     })
   }
 
