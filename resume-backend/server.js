@@ -74,11 +74,12 @@ app.post("/api/generate", async (req, res) => {
       },
       body: JSON.stringify({
         model: "openai/gpt-oss-20b",
+        reasoning_effort: "low",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
         ],
-        max_tokens: 1000
+        max_tokens: 1500
       })
     })
     const data = await response.json()
