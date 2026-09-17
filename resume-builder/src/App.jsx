@@ -115,6 +115,7 @@ const themes = {
 export default function App() {
   const [activeTab, setActiveTab] = useState("Build")
   const [themeMode, setThemeMode] = useState("dark")
+  const [themeTransition, setThemeTransition] = useState(null)
   const [appLoading, setAppLoading] = useState(true)
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -334,20 +335,21 @@ Return ONLY a JSON object with no markdown or backticks:
   const toggleTheme = (e) => {
     const x = e.clientX
     const y = e.clientY
+    const newMode = themeMode === "dark" ? "light" : "dark"
     const endRadius = Math.hypot(
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y)
     )
-    if (!document.startViewTransition) {
-      setThemeMode(themeMode === "dark" ? "light" : "dark")
-      return
-    }
-    document.documentElement.style.setProperty("--theme-toggle-x", `${x}px`)
-    document.documentElement.style.setProperty("--theme-toggle-y", `${y}px`)
-    document.documentElement.style.setProperty("--theme-toggle-r", `${endRadius}px`)
-    document.startViewTransition(() => {
-      setThemeMode(themeMode === "dark" ? "light" : "dark")
+    setThemeTransition({ x, y, endRadius, bg: themes[newMode].bg, expanded: false })
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setThemeTransition((t) => t && { ...t, expanded: true })
+      })
     })
+    setTimeout(() => {
+      setThemeMode(newMode)
+      setThemeTransition(null)
+    }, 650)
   }
 
   const headerBtnStyle = {
@@ -571,6 +573,21 @@ Return ONLY a JSON object with no markdown or backticks:
       )}
 
       <Footer theme={theme} />
+
+      {themeTransition && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 200,
+            pointerEvents: "none",
+            background: themeTransition.bg,
+            clipPath: `circle(${themeTransition.expanded ? themeTransition.endRadius : 0}px at ${themeTransition.x}px ${themeTransition.y}px)`,
+            transition: "clip-path 0.6s cubic-bezier(0.4, 0, 0.2, 1)"
+          }}
+        />
+      )}
 
       <button
         onClick={toggleTheme}
