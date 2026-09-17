@@ -61,11 +61,21 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
   function handleDownload() {
     const pdf = new jsPDF("p", "mm", "a4")
     const pageWidth = 210
+    const pageHeight = 297
     const margin = 20
+    const bottomMargin = 20
     const contentWidth = pageWidth - margin * 2
     let y = 20
 
+    const checkPageBreak = (neededHeight) => {
+      if (y + neededHeight > pageHeight - bottomMargin) {
+        pdf.addPage()
+        y = 20
+      }
+    }
+
     const addSectionHeader = (title) => {
+      checkPageBreak(12)
       y += 4
       pdf.setFontSize(8)
       pdf.setTextColor(150, 150, 150)
@@ -122,13 +132,15 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
       addSectionHeader("Projects")
       resume.projectsList.forEach((p) => {
         pdf.setFontSize(10)
+        pdf.setFont("helvetica", "normal")
+        const descLines = pdf.splitTextToSize(p.desc || "", contentWidth - 6)
+        checkPageBreak(5 + descLines.length * 5 + 2)
         pdf.setTextColor(17, 17, 17)
         pdf.setFont("helvetica", "bold")
-        pdf.text(`• ${p.name}`, margin, y)
+        pdf.text(`• ${p.name || ""}`, margin, y)
         y += 5
         pdf.setFont("helvetica", "normal")
         pdf.setTextColor(80, 80, 80)
-        const descLines = pdf.splitTextToSize(p.desc, contentWidth - 6)
         pdf.text(descLines, margin + 3, y)
         y += descLines.length * 5 + 2
       })
@@ -138,13 +150,15 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
       addSectionHeader("Experience")
       resume.experienceList.forEach((e) => {
         pdf.setFontSize(10)
+        pdf.setFont("helvetica", "normal")
+        const descLines = pdf.splitTextToSize(e.desc || "", contentWidth - 6)
+        checkPageBreak(5 + descLines.length * 5 + 2)
         pdf.setTextColor(17, 17, 17)
         pdf.setFont("helvetica", "bold")
-        pdf.text(`• ${e.role} at ${e.company}`, margin, y)
+        pdf.text(`• ${e.role || ""} at ${e.company || ""}`, margin, y)
         y += 5
         pdf.setFont("helvetica", "normal")
         pdf.setTextColor(80, 80, 80)
-        const descLines = pdf.splitTextToSize(e.desc, contentWidth - 6)
         pdf.text(descLines, margin + 3, y)
         y += descLines.length * 5 + 2
       })
