@@ -1,63 +1,55 @@
 import { useState } from "react"
 import jsPDF from "jspdf"
+import { Download } from "lucide-react"
 
-export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, theme, generating, onResumeChange }) {
-  function updateArrayItem(array, index, newItem) {
+function updateArrayItem(array, index, newItem) {
   return array.map((item, i) => i === index ? newItem : item)
-  }
+}
 
-  function removeArrayItem(array, index) {
-    return array.filter((_, i) => i !== index)
-  }
+function removeArrayItem(array, index) {
+  return array.filter((_, i) => i !== index)
+}
 
-  function addArrayItem(array, newItem) {
-    return [...(array || []), newItem]
-  }
+function addArrayItem(array, newItem) {
+  return [...(array || []), newItem]
+}
 
-  function EditableText({ value, onChange, multiline, style, placeholder }) {
-    const [editing, setEditing] = useState(false)
-    const [tempValue, setTempValue] = useState(value)
+function EditableText({ value, onChange, multiline, block, placeholder }) {
+  const [editing, setEditing] = useState(false)
+  const [tempValue, setTempValue] = useState(value)
 
-    if (editing) {
-      const Tag = multiline ? "textarea" : "input"
-      return (
-        <Tag
-          autoFocus
-          value={tempValue}
-          onChange={(e) => setTempValue(e.target.value)}
-          onBlur={() => { onChange(tempValue); setEditing(false) }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !multiline) { onChange(tempValue); setEditing(false) }
-            if (e.key === "Escape") { setTempValue(value); setEditing(false) }
-          }}
-          style={{
-            ...style,
-            width: "100%",
-            background: "rgba(59,130,246,0.06)",
-            border: "1px solid rgba(59,130,246,0.4)",
-            borderRadius: "4px",
-            padding: "2px 6px",
-            outline: "none",
-            fontFamily: "inherit",
-            resize: multiline ? "vertical" : "none",
-            minHeight: multiline ? "60px" : "auto",
-            boxSizing: "border-box"
-          }}
-        />
-      )
-    }
+  if (editing) {
+    const Tag = multiline ? "textarea" : "input"
     return (
-      <span
-        onClick={() => { setTempValue(value); setEditing(true) }}
-        style={{ ...style, cursor: "text", borderRadius: "4px", padding: "2px 4px", margin: "-2px -4px", transition: "background 0.15s" }}
-        onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.04)"}
-        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-      >
-        {value || <span style={{ color: "#999", fontStyle: "italic" }}>{placeholder || "Click to edit"}</span>}
-      </span>
+      <Tag
+        autoFocus
+        className="editable-input"
+        value={tempValue}
+        onChange={(e) => setTempValue(e.target.value)}
+        onBlur={() => { onChange(tempValue); setEditing(false) }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !multiline) { onChange(tempValue); setEditing(false) }
+          if (e.key === "Escape") { setTempValue(value); setEditing(false) }
+        }}
+      />
     )
   }
+  const start = () => { setTempValue(value); setEditing(true) }
+  return (
+    <span
+      className="editable"
+      role="button"
+      tabIndex={0}
+      onClick={start}
+      onKeyDown={(e) => { if (e.key === "Enter") start() }}
+      style={{ display: block ? "block" : "inline" }}
+    >
+      {value || <span className="editable-empty">{placeholder || "Click to edit"}</span>}
+    </span>
+  )
+}
 
+export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, generating, onResumeChange }) {
   function handleDownload() {
     const pdf = new jsPDF("p", "mm", "a4")
     const pageWidth = 210
@@ -170,172 +162,172 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
   if (!resume) {
     if (generating) {
       return (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "400px", gap: "16px" }}>          <div style={{ width: "48px", height: "48px", border: `3px solid ${theme.inputBorder}`, borderTopColor: theme.text, borderRadius: "50%", animation: "spin 0.8s linear infinite" }}></div>
-          <p style={{ fontSize: "14px", fontWeight: 500, color: theme.text }}>Crafting your resume...</p>
-          <p style={{ fontSize: "12px", color: theme.textMuted, marginTop: "-8px" }}>AI is analyzing your details</p>
+        <div className="paper" aria-busy="true">
+          <p className="paper-status">Writing your resume…</p>
+          <div className="skeleton" aria-hidden="true">
+            <span className="sk-title"></span>
+            <span style={{ width: "55%" }}></span>
+            <span className="sk-rule"></span>
+            <span></span>
+            <span style={{ width: "80%" }}></span>
+            <span className="sk-rule"></span>
+            <span style={{ width: "40%" }}></span>
+            <span className="sk-rule"></span>
+            <span style={{ width: "90%" }}></span>
+            <span style={{ width: "70%" }}></span>
+            <span style={{ width: "85%" }}></span>
+          </div>
         </div>
       )
     }
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "400px", height: "100%", gap: "12px" }}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={theme.textMuted} strokeWidth="1"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
-        <p style={{ fontSize: "13px", color: theme.textMuted }}>Your resume will appear here</p>
+      <div className="paper-blank">
+        <p className="paper-blank-title">No resume yet</p>
+        <p>Fill in at least your name and skills, then choose Generate resume. It will appear here, ready to edit.</p>
       </div>
     )
   }
 
-  const sectionHeader = {
-    fontSize: "10px", fontWeight: 600, color: "#999",
-    textTransform: "uppercase", letterSpacing: "0.08em",
-    borderBottom: "1px solid #f0f0f0", paddingBottom: "5px",
-    marginBottom: "10px", marginTop: "16px"
-  }
+  const set = (patch) => onResumeChange({ ...resume, ...patch })
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "12px", color: theme.textSecondary }}>Generated Resume</span>
-        <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "4px", flexWrap: "nowrap" }}>
-          <button onClick={onScoreClick} className="resume-btn-secondary" style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
-            Score this →
-          </button>
-          <button onClick={onSaveClick} style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
-            {isLoaded ? "Update" : "Save Resume"}
-          </button>
+    <div>
+      <div className="desk-toolbar">
+        <p className="desk-hint">Click any line to edit it</p>
+        <div className="desk-actions">
+          <button onClick={onScoreClick} className="btn btn-ghost btn-sm">Check ATS score</button>
+          <button onClick={onSaveClick} className="btn btn-ghost btn-sm">{isLoaded ? "Save changes" : "Save resume"}</button>
           {isLoaded && (
-            <button onClick={onSaveAsNewClick} style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${theme.secondaryButtonBorder}`, background: "transparent", color: theme.secondaryButtonText, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
-              Save as New
-            </button>
+            <button onClick={onSaveAsNewClick} className="btn btn-ghost btn-sm">Save as new</button>
           )}
-          <button onClick={handleDownload} style={{ fontSize: "11px", padding: "6px 10px", borderRadius: "6px", border: "none", background: theme.buttonBg, color: theme.buttonText, cursor: "pointer", fontWeight: 600, fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
+          <button onClick={onClearClick} className="btn btn-danger btn-sm">Clear</button>
+          <button onClick={handleDownload} className="btn btn-primary btn-sm">
+            <Download size={14} strokeWidth={2.2} />
             Download PDF
-          </button>
-          <button onClick={onClearClick} style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", border: "1px solid rgba(220,38,38,0.3)", background: "transparent", color: "#dc2626", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
-            Clear
           </button>
         </div>
       </div>
 
-      <div className="resume-fade-in" style={{ background: theme.resumeCardBg, borderRadius: "12px", padding: "32px", fontSize: "13px", lineHeight: "1.7", color: theme.resumeText }}>
-        <h1 style={{ fontSize: "22px", fontWeight: 700, color: theme.resumeText, marginBottom: "4px", letterSpacing: "-0.02em" }}>
-          <EditableText value={resume.name} onChange={(v) => onResumeChange({ ...resume, name: v })} style={{ display: "inline-block" }} />
+      <article className="paper">
+        <h1 className="paper-name">
+          <EditableText value={resume.name} onChange={(v) => set({ name: v })} />
         </h1>
-        <p style={{ color: theme.resumeMuted, fontSize: "12px", marginBottom: "4px" }}>
-          <EditableText value={resume.email} onChange={(v) => onResumeChange({ ...resume, email: v })} style={{ display: "inline-block" }} />
-          {resume.phone ? " · " : ""}
-          <EditableText value={resume.phone} onChange={(v) => onResumeChange({ ...resume, phone: v })} style={{ display: "inline-block" }} placeholder="Phone" />
+        <p className="paper-contact">
+          <EditableText value={resume.email} onChange={(v) => set({ email: v })} placeholder="Email" />
+          <span className="paper-contact-sep" aria-hidden="true">/</span>
+          <EditableText value={resume.phone} onChange={(v) => set({ phone: v })} placeholder="Phone" />
         </p>
 
         {resume.summary && (
           <>
-            <p style={sectionHeader}>Summary</p>
-            <p style={{ color: theme.resumeTextSecondary, marginBottom: "4px", fontSize: "13px" }}>
-              <EditableText value={resume.summary} multiline onChange={(v) => onResumeChange({ ...resume, summary: v })} style={{ display: "block" }} />
+            <h2 className="paper-h">Summary</h2>
+            <p className="paper-muted">
+              <EditableText value={resume.summary} multiline block onChange={(v) => set({ summary: v })} />
             </p>
           </>
         )}
 
-        <p style={sectionHeader}>Education</p>
-        <p style={{ color: theme.resumeText, marginBottom: "4px" }}>
-          <EditableText value={resume.education} onChange={(v) => onResumeChange({ ...resume, education: v })} style={{ display: "inline-block" }} />
+        <h2 className="paper-h">Education</h2>
+        <p>
+          <EditableText value={resume.education} onChange={(v) => set({ education: v })} />
         </p>
 
-        <p style={sectionHeader}>Skills</p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "4px", alignItems: "center" }}>
+        <h2 className="paper-h">Skills</h2>
+        <div className="skills">
           {(resume.skillsList || []).map((skill, i) => (
-            <span key={i} style={{ background: theme.skillChipBg, color: theme.skillChipText, fontSize: "12px", padding: "3px 10px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <span key={i} className="skill">
               <EditableText
                 value={skill}
                 onChange={(v) => {
                   if (!v.trim()) {
-                    onResumeChange({ ...resume, skillsList: removeArrayItem(resume.skillsList, i) })
+                    set({ skillsList: removeArrayItem(resume.skillsList, i) })
                   } else {
-                    onResumeChange({ ...resume, skillsList: updateArrayItem(resume.skillsList, i, v) })
+                    set({ skillsList: updateArrayItem(resume.skillsList, i, v) })
                   }
                 }}
-                style={{ display: "inline-block" }}
               />
               <button
-                onClick={() => onResumeChange({ ...resume, skillsList: removeArrayItem(resume.skillsList, i) })}
-                style={{ background: "none", border: "none", color: theme.skillChipText, cursor: "pointer", fontSize: "14px", padding: 0, lineHeight: 1, opacity: 0.5 }}
+                onClick={() => set({ skillsList: removeArrayItem(resume.skillsList, i) })}
+                className="remove-x"
+                aria-label={`Remove ${skill}`}
                 title="Remove skill"
               >×</button>
             </span>
           ))}
-          <button
-            onClick={() => onResumeChange({ ...resume, skillsList: addArrayItem(resume.skillsList, "New skill") })}
-            style={{ background: "transparent", border: `1px dashed ${theme.resumeMuted}`, color: theme.resumeMuted, fontSize: "12px", padding: "3px 10px", borderRadius: "4px", cursor: "pointer", fontFamily: "inherit" }}
-          >
+          <button onClick={() => set({ skillsList: addArrayItem(resume.skillsList, "New skill") })} className="add-line">
             + Add skill
           </button>
         </div>
 
-        <p style={sectionHeader}>Projects</p>
-        <ul style={{ listStyle: "disc", paddingLeft: "18px", color: theme.resumeTextSecondary, marginBottom: "4px" }}>
+        <h2 className="paper-h">Projects</h2>
+        <ul className="paper-list">
           {(resume.projectsList || []).map((p, i) => (
-            <li key={i} style={{ marginBottom: "6px", position: "relative" }}>
-              <span style={{ fontWeight: 600, color: theme.resumeText }}>
+            <li key={i}>
+              <span className="paper-strong">
                 <EditableText
                   value={p.name}
-                  onChange={(v) => onResumeChange({ ...resume, projectsList: updateArrayItem(resume.projectsList, i, { ...p, name: v }) })}
-                  style={{ display: "inline-block" }}
+                  onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, name: v }) })}
                 />
-              </span> — <EditableText
+              </span>
+              {": "}
+              <EditableText
                 value={p.desc}
                 multiline
-                onChange={(v) => onResumeChange({ ...resume, projectsList: updateArrayItem(resume.projectsList, i, { ...p, desc: v }) })}
-                style={{ display: "inline-block" }}
+                onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, desc: v }) })}
               />
               <button
-                onClick={() => onResumeChange({ ...resume, projectsList: removeArrayItem(resume.projectsList, i) })}
-                style={{ background: "none", border: "none", color: theme.resumeMuted, cursor: "pointer", fontSize: "14px", padding: "0 0 0 8px", lineHeight: 1, opacity: 0.4 }}
+                onClick={() => set({ projectsList: removeArrayItem(resume.projectsList, i) })}
+                className="remove-x"
+                aria-label="Remove project"
                 title="Remove project"
               >×</button>
             </li>
           ))}
         </ul>
         <button
-          onClick={() => onResumeChange({ ...resume, projectsList: addArrayItem(resume.projectsList, { name: "New project", desc: "Description" }) })}
-          style={{ background: "transparent", border: `1px dashed ${theme.resumeMuted}`, color: theme.resumeMuted, fontSize: "12px", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", marginBottom: "12px", fontFamily: "inherit" }}
+          onClick={() => set({ projectsList: addArrayItem(resume.projectsList, { name: "New project", desc: "Description" }) })}
+          className="add-line"
         >
           + Add project
         </button>
 
-        <p style={sectionHeader}>Experience</p>
-        <ul style={{ listStyle: "disc", paddingLeft: "18px", color: theme.resumeTextSecondary }}>
+        <h2 className="paper-h">Experience</h2>
+        <ul className="paper-list">
           {(resume.experienceList || []).map((e, i) => (
-            <li key={i} style={{ marginBottom: "6px" }}>
-              <span style={{ fontWeight: 600, color: theme.resumeText }}>
+            <li key={i}>
+              <span className="paper-strong">
                 <EditableText
                   value={e.role}
-                  onChange={(v) => onResumeChange({ ...resume, experienceList: updateArrayItem(resume.experienceList, i, { ...e, role: v }) })}
-                  style={{ display: "inline-block" }}
+                  onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, role: v }) })}
                 />
-              </span> at <EditableText
+              </span>
+              {" at "}
+              <EditableText
                 value={e.company}
-                onChange={(v) => onResumeChange({ ...resume, experienceList: updateArrayItem(resume.experienceList, i, { ...e, company: v }) })}
-                style={{ display: "inline-block" }}
-              /> — <EditableText
+                onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, company: v }) })}
+              />
+              {": "}
+              <EditableText
                 value={e.desc}
                 multiline
-                onChange={(v) => onResumeChange({ ...resume, experienceList: updateArrayItem(resume.experienceList, i, { ...e, desc: v }) })}
-                style={{ display: "inline-block" }}
+                onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, desc: v }) })}
               />
               <button
-                onClick={() => onResumeChange({ ...resume, experienceList: removeArrayItem(resume.experienceList, i) })}
-                style={{ background: "none", border: "none", color: theme.resumeMuted, cursor: "pointer", fontSize: "14px", padding: "0 0 0 8px", lineHeight: 1, opacity: 0.4 }}
+                onClick={() => set({ experienceList: removeArrayItem(resume.experienceList, i) })}
+                className="remove-x"
+                aria-label="Remove experience"
                 title="Remove experience"
               >×</button>
             </li>
           ))}
         </ul>
         <button
-          onClick={() => onResumeChange({ ...resume, experienceList: addArrayItem(resume.experienceList, { role: "New role", company: "Company", desc: "Description" }) })}
-          style={{ background: "transparent", border: `1px dashed ${theme.resumeMuted}`, color: theme.resumeMuted, fontSize: "12px", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", fontFamily: "inherit" }}
+          onClick={() => set({ experienceList: addArrayItem(resume.experienceList, { role: "New role", company: "Company", desc: "Description" }) })}
+          className="add-line"
         >
           + Add experience
         </button>
-      </div>
+      </article>
     </div>
   )
 }

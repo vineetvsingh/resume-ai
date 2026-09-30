@@ -1,83 +1,56 @@
 import { useState } from "react"
 
-export default function ATSScorer({ onScore, loading, result, theme }) {
-  const [jd, setJd] = useState("")
+function verdict(score) {
+  if (score >= 70) return { text: "Strong match", color: "var(--ok)" }
+  if (score >= 45) return { text: "Partial match", color: "var(--warn)" }
+  return { text: "Weak match", color: "var(--pen)" }
+}
 
-  const inputStyle = {
-    width: "100%",
-    padding: "10px 12px",
-    fontSize: "13px",
-    fontFamily: "inherit",
-    background: theme.inputBg,
-    border: `1px solid ${theme.inputBorder}`,
-    borderRadius: "8px",
-    color: theme.inputText,
-    marginBottom: "8px",
-    outline: "none",
-    resize: "vertical",
-    minHeight: "200px",
-    boxSizing: "border-box"
-  }
+export default function ATSScorer({ onScore, loading, result }) {
+  const [jd, setJd] = useState("")
+  const v = result ? verdict(result.score) : null
 
   return (
     <div>
-      <textarea
-        style={inputStyle}
-        placeholder="Paste the full job description here..."
-        value={jd}
-        onChange={(e) => setJd(e.target.value)}
-      />
-      <button
-        onClick={() => onScore(jd)}
-        disabled={loading}
-        style={{
-          width: "100%",
-          padding: "12px",
-          fontSize: "13px",
-          fontWeight: 600,
-          fontFamily: "inherit",
-          background: loading ? theme.inputBg : theme.buttonBg,
-          color: loading ? theme.textMuted : theme.buttonText,
-          border: "none",
-          borderRadius: "8px",
-          cursor: loading ? "not-allowed" : "pointer"
-        }}
-      >
-        {loading ? "Analyzing..." : "Analyze Match →"}
+      <label className="field">
+        <span className="field-label">Job description</span>
+        <textarea
+          className="input input-tall"
+          placeholder="Paste the full job description here"
+          value={jd}
+          onChange={(e) => setJd(e.target.value)}
+        />
+      </label>
+      <button onClick={() => onScore(jd)} disabled={loading} className="btn btn-primary btn-block">
+        {loading ? "Analyzing…" : "Analyze match"}
       </button>
 
       {result && (
-        <div style={{ marginTop: "24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
-            <span style={{ fontSize: "13px", color: theme.textSecondary }}>Match Score</span>
-            <span style={{ fontSize: "36px", fontWeight: 700, color: result.score >= 70 ? "#22c55e" : result.score >= 45 ? "#f59e0b" : "#ef4444", letterSpacing: "-0.03em" }}>
-              {result.score}<span style={{ fontSize: "18px", color: theme.textMuted }}>%</span>
-            </span>
+        <div className="result">
+          <div className="score">
+            <span className="score-num">{result.score}<small>%</small></span>
+            <span className="score-verdict" style={{ color: v.color }}>{v.text}</span>
           </div>
-          <div style={{ height: "4px", background: theme.inputBg, borderRadius: "2px", marginBottom: "16px" }}>
-            <div style={{ height: "100%", borderRadius: "2px", width: `${result.score}%`, background: result.score >= 70 ? "#22c55e" : result.score >= 45 ? "#f59e0b" : "#ef4444", transition: "width 0.6s ease" }} />
+          <div className="meter" role="meter" aria-valuenow={result.score} aria-valuemin={0} aria-valuemax={100} aria-label="Match score">
+            <div style={{ width: `${result.score}%`, background: v.color }} />
           </div>
 
-          {result.summary && <p style={{ fontSize: "13px", color: theme.textSecondary, marginBottom: "16px", lineHeight: 1.6 }}>{result.summary}</p>}
+          {result.summary && <p className="result-summary">{result.summary}</p>}
 
           {result.foundKeywords?.length > 0 && (
-            <div style={{ marginBottom: "12px" }}>
-              <p style={{ fontSize: "11px", fontWeight: 600, color: theme.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>Found</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {result.foundKeywords.map((k, i) => (
-                  <span key={i} style={{ background: "rgba(21, 128, 61, 0.12)", color: "#15803d", fontSize: "12px", fontWeight: 500, padding: "3px 10px", borderRadius: "4px", border: "1px solid rgba(21, 128, 61, 0.3)" }}>{k}</span>
-                ))}
+            <div className="kw-group">
+              <h3 className="kw-title">Keywords you already have</h3>
+              <div className="kw-list">
+                {result.foundKeywords.map((k, i) => <span key={i} className="kw-found">{k}</span>)}
               </div>
             </div>
           )}
 
           {result.missingKeywords?.length > 0 && (
-            <div>
-              <p style={{ fontSize: "11px", fontWeight: 600, color: theme.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>Missing</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {result.missingKeywords.map((k, i) => (
-                  <span key={i} style={{ background: "rgba(220, 38, 38, 0.12)", color: "#dc2626", fontSize: "12px", fontWeight: 500, padding: "3px 10px", borderRadius: "4px", border: "1px solid rgba(220, 38, 38, 0.3)" }}>{k}</span>
-                ))}
+            <div className="kw-group">
+              <h3 className="kw-title">Keywords to add</h3>
+              <div className="kw-list">
+                {result.missingKeywords.map((k, i) => <span key={i} className="kw-missing">{k}</span>)}
               </div>
             </div>
           )}
