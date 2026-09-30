@@ -9,9 +9,8 @@ function scoreBand(score) {
   return { label: "Weak", color: "var(--pen)" }
 }
 
-function greetingName(data) {
-  const first = data.displayName?.trim().split(/\s+/)[0]
-  return first || data.user.email.split("@")[0]
+function greetingName(user) {
+  return user.profile?.name?.trim().split(/\s+/)[0] || user.email.split("@")[0]
 }
 
 function useWidth() {
@@ -92,7 +91,7 @@ function ScoreChart({ checks }) {
   )
 }
 
-export default function Dashboard({ data, error, currentResume, onContinue, onOpenResume, onDeleteResume, onNewResume, onCheckAts, onRetry }) {
+export default function Dashboard({ data, error, currentResume, onContinue, onOpenResume, onDeleteResume, onNewResume, onCheckAts, onEditProfile, onRetry }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
 
   if (error) {
@@ -113,8 +112,13 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
     <main className="dash">
       <div className="dash-head">
         <div>
-          <h1 className="page-title">Welcome back, {greetingName(data)}</h1>
-          <p className="dash-muted">{data.user.email}, member since {fmtDate(data.user.createdAt, { month: "long", year: "numeric" })}</p>
+          <h1 className="page-title">Welcome back, {greetingName(data.user)}</h1>
+          <p className="dash-muted">
+            {data.user.email}, member since {fmtDate(data.user.createdAt, { month: "long", year: "numeric" })}
+          </p>
+          <button onClick={onEditProfile} className="link-btn dash-profile-link">
+            {data.user.profile?.name ? "Edit profile" : "Add your name and details"}
+          </button>
         </div>
         <div className="dash-head-actions">
           {currentResume && (

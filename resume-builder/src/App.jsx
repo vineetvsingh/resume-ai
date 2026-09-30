@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { flushSync } from "react-dom"
-import { Sun, Moon, Sparkles, Target, PenLine, LayoutDashboard, LogOut } from "lucide-react"
+import { Sun, Moon, Sparkles, Target, PenLine, LayoutDashboard, LogOut, PanelLeft, PanelLeftClose } from "lucide-react"
 import ResumeForm from "./components/ResumeForm"
 import ResumePreview from "./components/ResumePreview"
 import ATSScorer from "./components/ATSScorer"
@@ -9,6 +9,8 @@ import Footer from "./components/Footer"
 import AuthDialog from "./components/AuthDialog"
 import Dashboard from "./components/Dashboard"
 import Landing from "./components/Landing"
+import SidePanel from "./components/SidePanel"
+import ProfileSettings from "./components/ProfileSettings"
 import { api, getToken, setToken, BACKEND_URL } from "./auth"
 
 const TABS = ["Build", "ATS Score", "Suggestions"]
@@ -50,6 +52,24 @@ export default function App() {
   const [dashboard, setDashboard] = useState(null)
   const [dashboardError, setDashboardError] = useState(null)
   const [saveNote, setSaveNote] = useState(null)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const headerRef = useRef(null)
+
+  // Expose the header's real height so the side panel can sit just below it
+  useEffect(() => {
+    if (!headerRef.current) return
+    const ro = new ResizeObserver(([entry]) => {
+      document.documentElement.style.setProperty("--header-offset", `${entry.target.offsetHeight}px`)
+    })
+    ro.observe(headerRef.current)
+    return () => ro.disconnect()
+  }, [appLoading])
+
+  function togglePanel() {
+    const next = !panelOpen
+    setPanelOpen(next)
+    if (next && user && !dashboard) loadDashboard()
+  }
 
   const [user, setUser] = useState(null)
   const [authPrompt, setAuthPrompt] = useState(null)
@@ -301,18 +321,44 @@ Return ONLY a JSON object with no markdown or backticks:
 
   function goHome() {
     setView("home")
+    setPanelOpen(false)
+    window.scrollTo({ top: 0 })
     if (getToken()) loadDashboard()
   }
 
   function openBuilder(tab = "Build") {
     setActiveTab(tab)
     setView("workspace")
+    window.scrollTo({ top: 0 })
   }
 
   function startNewResume() {
     handleClearResume()
-    handleClearForm()
+    const p = user?.profile || {}
+    setFormData({
+      name: p.name || "",
+      email: user?.email || "",
+      phone: p.phone || "",
+      college: p.college || "",
+      cgpa: p.cgpa || "",
+      skills: "",
+      projects: "",
+      experience: "",
+      role: p.targetRole || ""
+    })
+    setBuildError(null)
     openBuilder("Build")
+  }
+
+  function openProfile() {
+    setView("profile")
+    setPanelOpen(false)
+    window.scrollTo({ top: 0 })
+  }
+
+  function handleProfileSaved(nextUser) {
+    setUser(nextUser)
+    setDashboard((d) => (d ? { ...d, user: nextUser } : d))
   }
 
   async function handleDeleteResume(id) {
@@ -385,6 +431,7 @@ Return ONLY a JSON object with no markdown or backticks:
     })
     setView("workspace")
     setActiveTab("Build")
+    window.scrollTo({ top: 0 })
   }
 
   if (appLoading) {
@@ -407,11 +454,23 @@ Return ONLY a JSON object with no markdown or backticks:
 
   return (
     <div>
-      <header className="header">
-        <button className="wordmark wordmark-btn" onClick={goHome} aria-label="ResumeAI home">
-          <span className="wordmark-glyph" aria-hidden="true"></span>
-          ResumeAI
-        </button>
+      <header className="header" ref={headerRef}>
+        <div className="header-start">
+          <button
+            onClick={togglePanel}
+            className="icon-btn"
+            aria-expanded={panelOpen}
+            aria-controls="side-panel"
+            aria-label={panelOpen ? "Close menu" : "Open menu"}
+            title={panelOpen ? "Close menu" : "Open menu"}
+          >
+            {panelOpen ? <PanelLeftClose size={17} strokeWidth={2} /> : <PanelLeft size={17} strokeWidth={2} />}
+          </button>
+          <button className="wordmark wordmark-btn" onClick={goHome} aria-label="ResumeAI home">
+            <span className="wordmark-glyph" aria-hidden="true"></span>
+            ResumeAI
+          </button>
+        </div>
 
         {view === "workspace" && (
         <nav className="tabs" role="tablist" aria-label="Resume builder">
@@ -456,7 +515,9 @@ Return ONLY a JSON object with no markdown or backticks:
         </div>
       </header>
 
-      {view === "home" ? (
+      {view === "profile" && user ? (
+        <ProfileSettings user={user} onSaved={handleProfileSaved} onBack={goHome} />
+      ) : view === "home" || view === "profile" ? (
         user ? (
           <Dashboard
             data={dashboard}
@@ -467,6 +528,7 @@ Return ONLY a JSON object with no markdown or backticks:
             onDeleteResume={handleDeleteResume}
             onNewResume={startNewResume}
             onCheckAts={() => openBuilder(resume ? "ATS Score" : "Build")}
+            onEditProfile={openProfile}
             onRetry={loadDashboard}
           />
         ) : authChecking ? (
@@ -519,7 +581,23 @@ Return ONLY a JSON object with no markdown or backticks:
         />
       )}
 
-      <Footer />
+      <SidePanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        view={view}
+        activeTab={activeTab}
+        user={user}
+        resumes={dashboard?.resumes}
+        loadedResumeId={loadedResumeId}
+        onHome={goHome}
+        onOpenTab={openBuilder}
+        onOpenResume={handleLoadResume}
+        onLogin={() => setAuthPrompt({ action: goHome })}
+        onLogout={handleLogout}
+        onProfile={openProfile}
+      />
+
+      {view === "home" && <Footer />}
     </div>
   )
 }

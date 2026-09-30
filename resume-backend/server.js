@@ -18,9 +18,37 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.log("MongoDB error:", err))
 
+// Profile fields a user can edit, with their maximum lengths
+const PROFILE_FIELDS = {
+  name: 80,
+  phone: 30,
+  location: 80,
+  college: 120,
+  cgpa: 20,
+  graduationYear: 4,
+  targetRole: 80,
+  linkedin: 200,
+  github: 200,
+  portfolio: 200
+}
+const PROFILE_LABELS = {
+  name: "Name",
+  phone: "Phone",
+  location: "City",
+  college: "College",
+  cgpa: "CGPA",
+  graduationYear: "Graduation year",
+  targetRole: "Target role",
+  linkedin: "LinkedIn link",
+  github: "GitHub link",
+  portfolio: "Portfolio link"
+}
+const LINK_FIELDS = ["linkedin", "github", "portfolio"]
+
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
+  profile: Object.fromEntries(Object.keys(PROFILE_FIELDS).map((k) => [k, { type: String, default: "" }])),
   createdAt: { type: Date, default: Date.now }
 })
 
@@ -68,6 +96,33 @@ function requireAuth(req, res, next) {
   }
 }
 
+function publicUser(user) {
+  const profile = Object.fromEntries(Object.keys(PROFILE_FIELDS).map((k) => [k, user.profile?.[k] || ""]))
+  return { email: user.email, createdAt: user.createdAt, profile }
+}
+
+// Returns { profile } with trimmed values, or { error } describing the first invalid field
+function cleanProfile(input) {
+  const profile = {}
+  for (const [key, max] of Object.entries(PROFILE_FIELDS)) {
+    const raw = input?.[key]
+    if (raw === undefined || raw === null) continue
+    if (typeof raw !== "string") return { error: `${PROFILE_LABELS[key]} must be text` }
+    const value = raw.trim()
+    if (value.length > max) return { error: `${PROFILE_LABELS[key]} must be at most ${max} characters` }
+    profile[key] = value
+  }
+  if (profile.graduationYear && !/^\d{4}$/.test(profile.graduationYear)) {
+    return { error: "Graduation year must be a 4-digit year" }
+  }
+  for (const key of LINK_FIELDS) {
+    if (profile[key] && !/^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(profile[key])) {
+      return { error: `Enter a valid ${PROFILE_LABELS[key]}` }
+    }
+  }
+  return { profile }
+}
+
 function readCredentials(body) {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : ""
   const password = typeof body?.password === "string" ? body.password : ""
@@ -76,6 +131,13 @@ function readCredentials(body) {
 
 app.post("/auth/signup", async (req, res) => {
   const { email, password } = readCredentials(req.body)
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : ""
+  if (!name) {
+    return res.status(400).json({ error: "Enter your name" })
+  }
+  if (name.length > PROFILE_FIELDS.name) {
+    return res.status(400).json({ error: `Name must be at most ${PROFILE_FIELDS.name} characters` })
+  }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: "Enter a valid email address" })
   }
@@ -86,8 +148,8 @@ app.post("/auth/signup", async (req, res) => {
     if (await User.exists({ email })) {
       return res.status(409).json({ error: "An account with this email already exists. Log in instead." })
     }
-    const user = await User.create({ email, passwordHash: await bcrypt.hash(password, 10) })
-    res.json({ token: signToken(user), user: { email: user.email } })
+    const user = await User.create({ email, passwordHash: await bcrypt.hash(password, 10), profile: { name } })
+    res.json({ token: signToken(user), user: publicUser(user) })
   } catch (e) {
     res.status(500).json({ error: "Failed to create account" })
   }
@@ -100,7 +162,7 @@ app.post("/auth/login", async (req, res) => {
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       return res.status(401).json({ error: "Email or password is incorrect" })
     }
-    res.json({ token: signToken(user), user: { email: user.email } })
+    res.json({ token: signToken(user), user: publicUser(user) })
   } catch (e) {
     res.status(500).json({ error: "Failed to log in" })
   }
@@ -109,7 +171,21 @@ app.post("/auth/login", async (req, res) => {
 app.get("/auth/me", requireAuth, async (req, res) => {
   const user = await User.findById(req.userId).catch(() => null)
   if (!user) return res.status(401).json({ error: "Account not found. Log in again." })
-  res.json({ user: { email: user.email } })
+  res.json({ user: publicUser(user) })
+})
+
+app.put("/profile", requireAuth, async (req, res) => {
+  const { profile, error } = cleanProfile(req.body)
+  if (error) return res.status(400).json({ error })
+  if (profile.name === "") return res.status(400).json({ error: "Name cannot be empty" })
+  try {
+    const update = Object.fromEntries(Object.entries(profile).map(([k, v]) => [`profile.${k}`, v]))
+    const user = await User.findByIdAndUpdate(req.userId, { $set: update }, { returnDocument: "after" })
+    if (!user) return res.status(401).json({ error: "Account not found. Log in again." })
+    res.json({ user: publicUser(user) })
+  } catch (e) {
+    res.status(500).json({ error: "Failed to save profile" })
+  }
 })
 
 app.get("/resumes", requireAuth, async (req, res) => {
@@ -296,8 +372,7 @@ app.get("/dashboard", requireAuth, async (req, res) => {
 
     const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
     res.json({
-      user: { email: user.email, createdAt: user.createdAt },
-      displayName: resumes.find((r) => r.data?.name)?.data.name || null,
+      user: publicUser(user),
       stats: {
         resumeCount: resumes.length,
         checkCount: checks.length,
