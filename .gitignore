@@ -24,3 +24,5 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+# Local notes
+PROJECT_OVERVIEW.md
