@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react"
 import { flushSync } from "react-dom"
-import { Sun, Moon, Sparkles, Target, PenLine, FolderOpen, LogOut } from "lucide-react"
+import { Sun, Moon, Sparkles, Target, PenLine, LayoutDashboard, LogOut } from "lucide-react"
 import ResumeForm from "./components/ResumeForm"
 import ResumePreview from "./components/ResumePreview"
 import ATSScorer from "./components/ATSScorer"
 import Suggestions from "./components/Suggestions"
 import Footer from "./components/Footer"
 import AuthDialog from "./components/AuthDialog"
+import Dashboard from "./components/Dashboard"
+import Landing from "./components/Landing"
 import { api, getToken, setToken, BACKEND_URL } from "./auth"
 
 const TABS = ["Build", "ATS Score", "Suggestions"]
@@ -28,7 +30,6 @@ async function callGroq(prompt, systemPrompt) {
 }
 
 const saveResumeToDB = (name, data) => api("/resumes", { method: "POST", body: { name, data } })
-const fetchResumesFromDB = () => api("/resumes")
 const updateResumeInDB = (id, name, data) => api(`/resumes/${id}`, { method: "PUT", body: { name, data } })
 const deleteResumeFromDB = (id) => api(`/resumes/${id}`, { method: "DELETE" })
 
@@ -45,17 +46,25 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [])
 
-  const [savedResumes, setSavedResumes] = useState([])
-  const [showSaved, setShowSaved] = useState(false)
+  const [view, setView] = useState("home")
+  const [dashboard, setDashboard] = useState(null)
+  const [dashboardError, setDashboardError] = useState(null)
+  const [saveNote, setSaveNote] = useState(null)
 
   const [user, setUser] = useState(null)
   const [authPrompt, setAuthPrompt] = useState(null)
+  const [authChecking, setAuthChecking] = useState(() => !!getToken())
 
   useEffect(() => {
     if (!getToken()) return
     api("/auth/me")
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        setUser(data.user)
+        loadDashboard()
+      })
       .catch(() => setToken(null))
+      .finally(() => setAuthChecking(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Runs `action` now if logged in, otherwise after the user logs in
@@ -74,8 +83,8 @@ export default function App() {
   function handleLogout() {
     setToken(null)
     setUser(null)
-    setSavedResumes([])
-    setShowSaved(false)
+    setDashboard(null)
+    setView("home")
     setLoadedResumeId(null)
   }
 
@@ -165,6 +174,19 @@ Return ONLY a JSON object with no markdown or backticks:
         }
       }
       setScoreResult(data)
+      if (user && typeof data.score === "number") {
+        api("/scores", {
+          method: "POST",
+          body: {
+            resumeId: loadedResumeId,
+            resumeName: resume.name,
+            jobDescription: jd,
+            score: data.score,
+            foundKeywords: data.foundKeywords,
+            missingKeywords: data.missingKeywords
+          }
+        }).catch(() => {})
+      }
     } catch (e) {
       setScoreError("Something went wrong analyzing your resume. Please try again.")
     }
@@ -218,7 +240,7 @@ Return ONLY a JSON object with no markdown or backticks:
         const saved = await saveResumeToDB(resume.name, resume)
         if (saved?._id) setLoadedResumeId(saved._id)
       }
-      loadSavedResumes()
+      showSaveNote()
     } catch (e) {
       setBuildError(describeApiError(e, "Could not save. Check that the backend is running."))
     }
@@ -234,7 +256,7 @@ Return ONLY a JSON object with no markdown or backticks:
       try {
         const saved = await saveResumeToDB(resume.name, resume)
         if (saved?._id) setLoadedResumeId(saved._id)
-        loadSavedResumes()
+        showSaveNote()
       } catch (e) {
         setBuildError(describeApiError(e, "Could not save. Check that the backend is running."))
       }
@@ -263,33 +285,45 @@ Return ONLY a JSON object with no markdown or backticks:
     setSuggestResult(null)
   }
 
-  async function loadSavedResumes() {
+  function showSaveNote() {
+    setSaveNote("Saved to your dashboard")
+    setTimeout(() => setSaveNote(null), 4000)
+  }
+
+  async function loadDashboard() {
+    setDashboardError(null)
     try {
-      const data = await fetchResumesFromDB()
-      setSavedResumes(Array.isArray(data) ? data : [])
-      return true
+      setDashboard(await api("/dashboard"))
     } catch (e) {
-      setSavedResumes([])
-      return describeApiError(e, null) !== null
+      setDashboardError(describeApiError(e, "Could not load your dashboard. Check that the backend is running."))
     }
   }
 
-  function handleOpenSaved() {
-    requireLogin("Log in to see your saved resumes.", async () => {
-      if (await loadSavedResumes()) setShowSaved(true)
-    })
+  function goHome() {
+    setView("home")
+    if (getToken()) loadDashboard()
+  }
+
+  function openBuilder(tab = "Build") {
+    setActiveTab(tab)
+    setView("workspace")
+  }
+
+  function startNewResume() {
+    handleClearResume()
+    handleClearForm()
+    openBuilder("Build")
   }
 
   async function handleDeleteResume(id) {
     try {
       await deleteResumeFromDB(id)
       if (loadedResumeId === id) setLoadedResumeId(null)
-      loadSavedResumes()
+      loadDashboard()
     } catch (e) {
-      describeApiError(e, null)
+      setDashboardError(describeApiError(e, "Could not delete. Check that the backend is running."))
     }
   }
-
 
   const tabIcons = {
     "Build": <Sparkles size={15} strokeWidth={2} />,
@@ -349,7 +383,7 @@ Return ONLY a JSON object with no markdown or backticks:
       experience: (r.data.experienceList || []).map(e => `${e.role} at ${e.company}: ${e.desc}`).join(". "),
       role: ""
     })
-    setShowSaved(false)
+    setView("workspace")
     setActiveTab("Build")
   }
 
@@ -374,12 +408,13 @@ Return ONLY a JSON object with no markdown or backticks:
   return (
     <div>
       <header className="header">
-        <span className="wordmark">
+        <button className="wordmark wordmark-btn" onClick={goHome} aria-label="ResumeAI home">
           <span className="wordmark-glyph" aria-hidden="true"></span>
           ResumeAI
-        </span>
+        </button>
 
-        <nav className="tabs" role="tablist" aria-label="Workspace">
+        {view === "workspace" && (
+        <nav className="tabs" role="tablist" aria-label="Resume builder">
           {TABS.map(tab => (
             <button
               key={tab}
@@ -393,19 +428,22 @@ Return ONLY a JSON object with no markdown or backticks:
             </button>
           ))}
         </nav>
+        )}
 
         <div className="header-actions">
-          <button onClick={handleOpenSaved} className="btn btn-ghost btn-sm">
-            <FolderOpen size={15} strokeWidth={2} />
-            <span className="header-save-label">Saved resumes</span>
-          </button>
+          {view === "workspace" && (
+            <button onClick={goHome} className="btn btn-ghost btn-sm">
+              <LayoutDashboard size={15} strokeWidth={2} />
+              <span className="header-save-label">{user ? "Dashboard" : "Home"}</span>
+            </button>
+          )}
           {user ? (
             <button onClick={handleLogout} className="btn btn-ghost btn-sm" title={`Logged in as ${user.email}`}>
               <LogOut size={15} strokeWidth={2} />
               <span className="header-save-label">Log out</span>
             </button>
           ) : (
-            <button onClick={() => setAuthPrompt({})} className="btn btn-ghost btn-sm">Log in</button>
+            <button onClick={() => setAuthPrompt({ action: goHome })} className="btn btn-ghost btn-sm">Log in</button>
           )}
           <button
             onClick={toggleTheme}
@@ -418,6 +456,25 @@ Return ONLY a JSON object with no markdown or backticks:
         </div>
       </header>
 
+      {view === "home" ? (
+        user ? (
+          <Dashboard
+            data={dashboard}
+            error={dashboardError}
+            currentResume={resume}
+            onContinue={() => openBuilder("Build")}
+            onOpenResume={handleLoadResume}
+            onDeleteResume={handleDeleteResume}
+            onNewResume={startNewResume}
+            onCheckAts={() => openBuilder(resume ? "ATS Score" : "Build")}
+            onRetry={loadDashboard}
+          />
+        ) : authChecking ? (
+          <main className="dash"><p className="dash-muted">Loading your dashboard…</p></main>
+        ) : (
+          <Landing currentResume={resume} onStart={startNewResume} onContinue={() => openBuilder("Build")} onLogin={() => setAuthPrompt({ action: goHome })} />
+        )
+      ) : (
       <main className="layout">
         <section className="workspace">
           <div className="workspace-inner">
@@ -448,38 +505,10 @@ Return ONLY a JSON object with no markdown or backticks:
             isLoaded={!!loadedResumeId}
             generating={buildLoading}
             onResumeChange={setResume}
+            saveNote={saveNote}
           />
         </section>
       </main>
-
-      {showSaved && (
-        <>
-          <div className="scrim" onClick={() => setShowSaved(false)}></div>
-          <aside className="drawer" aria-label="Saved resumes">
-            <div className="drawer-head">
-              <h2 className="drawer-title">Saved resumes</h2>
-              <button onClick={() => setShowSaved(false)} className="icon-btn" aria-label="Close saved resumes">×</button>
-            </div>
-            {user && <p className="drawer-account">Logged in as {user.email}</p>}
-            {savedResumes.length === 0 && (
-              <p className="drawer-empty">Nothing saved yet. Generate a resume, then choose Save resume above the preview.</p>
-            )}
-            <ul className="saved-list">
-              {savedResumes.map((r) => (
-                <li key={r._id} className="saved">
-                  <div>
-                    <p className="saved-name">{r.name}</p>
-                    <p className="saved-date">{new Date(r.createdAt).toLocaleDateString()}</p>
-                  </div>
-                  <div className="saved-actions">
-                    <button onClick={() => handleLoadResume(r)} className="btn btn-ghost btn-sm">Load</button>
-                    <button onClick={() => handleDeleteResume(r._id)} className="btn btn-danger btn-sm">Delete</button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </aside>
-        </>
       )}
 
       {authPrompt && (

@@ -30,10 +30,24 @@ const resumeSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   name: String,
   data: Object,
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 })
 
 const Resume = mongoose.model("Resume", resumeSchema)
+
+const scoreCheckSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  resumeId: { type: String, default: null },
+  resumeName: String,
+  jobSnippet: String,
+  score: { type: Number, min: 0, max: 100, required: true },
+  foundKeywords: [String],
+  missingKeywords: [String],
+  createdAt: { type: Date, default: Date.now }
+})
+
+const ScoreCheck = mongoose.model("ScoreCheck", scoreCheckSchema)
 
 app.get("/", (req, res) => res.send("Resume API running"))
 
@@ -207,7 +221,7 @@ app.put("/resumes/:id", requireAuth, async (req, res) => {
   try {
     const updated = await Resume.findOneAndUpdate(
       { _id: req.params.id, userId: req.userId },
-      { name: name.trim(), data },
+      { name: name.trim(), data, updatedAt: new Date() },
       { returnDocument: 'after' }
     )
     if (!updated) {
@@ -216,6 +230,93 @@ app.put("/resumes/:id", requireAuth, async (req, res) => {
     res.json(updated)
   } catch (e) {
     res.status(500).json({ error: "Failed to update resume" })
+  }
+})
+
+const toKeywordList = (v) =>
+  Array.isArray(v) ? v.filter((k) => typeof k === "string").map((k) => k.trim().slice(0, 60)).filter(Boolean).slice(0, 40) : []
+
+app.post("/scores", requireAuth, async (req, res) => {
+  const { resumeId, resumeName, jobDescription, score, foundKeywords, missingKeywords } = req.body
+  const numericScore = Number(score)
+  if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > 100) {
+    return res.status(400).json({ error: "Score must be a number from 0 to 100" })
+  }
+  try {
+    // Only link to a resume the user actually owns
+    const ownedResume = typeof resumeId === "string" && mongoose.isValidObjectId(resumeId)
+      ? await Resume.exists({ _id: resumeId, userId: req.userId })
+      : null
+    const check = await ScoreCheck.create({
+      userId: req.userId,
+      resumeId: ownedResume ? resumeId : null,
+      resumeName: typeof resumeName === "string" ? resumeName.slice(0, 120) : "",
+      jobSnippet: typeof jobDescription === "string" ? jobDescription.replace(/\s+/g, " ").trim().slice(0, 160) : "",
+      score: Math.round(numericScore),
+      foundKeywords: toKeywordList(foundKeywords),
+      missingKeywords: toKeywordList(missingKeywords)
+    })
+    res.json(check)
+  } catch (e) {
+    res.status(500).json({ error: "Failed to save score" })
+  }
+})
+
+app.get("/dashboard", requireAuth, async (req, res) => {
+  try {
+    const [user, resumes, checks] = await Promise.all([
+      User.findById(req.userId),
+      Resume.find({ userId: req.userId }).sort({ updatedAt: -1, createdAt: -1 }),
+      ScoreCheck.find({ userId: req.userId }).sort({ createdAt: -1 }).limit(50)
+    ])
+    if (!user) return res.status(401).json({ error: "Account not found. Log in again." })
+
+    const latestScoreByResume = {}
+    for (const c of checks) {
+      if (c.resumeId && !(c.resumeId in latestScoreByResume)) latestScoreByResume[c.resumeId] = c.score
+    }
+
+    // Count each keyword once per check, case-insensitively, keeping the most recent spelling
+    const gaps = new Map()
+    for (const c of checks) {
+      const seen = new Set()
+      for (const k of c.missingKeywords) {
+        const key = k.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        const gap = gaps.get(key) || { keyword: k, count: 0 }
+        gap.count += 1
+        gaps.set(key, gap)
+      }
+    }
+    const commonGaps = [...gaps.values()]
+      .filter((g) => g.count >= 2)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+
+    const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+    res.json({
+      user: { email: user.email, createdAt: user.createdAt },
+      displayName: resumes.find((r) => r.data?.name)?.data.name || null,
+      stats: {
+        resumeCount: resumes.length,
+        checkCount: checks.length,
+        checksThisMonth: checks.filter((c) => c.createdAt.getTime() >= monthAgo).length,
+        bestScore: checks.length ? Math.max(...checks.map((c) => c.score)) : null
+      },
+      resumes: resumes.map((r) => ({
+        _id: r._id,
+        name: r.name,
+        data: r.data,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt || r.createdAt,
+        latestScore: latestScoreByResume[r._id.toString()] ?? null
+      })),
+      checks: checks.slice(0, 20),
+      commonGaps
+    })
+  } catch (e) {
+    res.status(500).json({ error: "Failed to load dashboard" })
   }
 })
 

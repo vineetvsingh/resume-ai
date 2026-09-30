@@ -49,7 +49,7 @@ function EditableText({ value, onChange, multiline, block, placeholder }) {
   )
 }
 
-export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, generating, onResumeChange }) {
+export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, generating, onResumeChange, saveNote }) {
   function handleDownload() {
     const pdf = new jsPDF("p", "mm", "a4")
     const pageWidth = 210
@@ -193,7 +193,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
   return (
     <div>
       <div className="desk-toolbar">
-        <p className="desk-hint">Click any line to edit it</p>
+        <p className="desk-hint" role="status">{saveNote || "Click any line to edit it"}</p>
         <div className="desk-actions">
           <button onClick={onScoreClick} className="btn btn-ghost btn-sm">Check ATS score</button>
           <button onClick={onSaveClick} className="btn btn-ghost btn-sm">{isLoaded ? "Save changes" : "Save resume"}</button>
