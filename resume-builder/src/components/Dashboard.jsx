@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect } from "react"
-import { Plus } from "lucide-react"
+import { Plus, Check, Trash2, UserRound, FileText, Target } from "lucide-react"
 
 const fmtDate = (d, opts = { day: "numeric", month: "short" }) => new Date(d).toLocaleDateString(undefined, opts)
 
@@ -29,15 +29,18 @@ function ScoreChart({ checks }) {
   const [ref, width] = useWidth()
   const [active, setActive] = useState(null)
   const points = [...checks].reverse() // oldest first
-  const height = 200
-  const pad = { top: 12, right: 12, bottom: 24, left: 34 }
+  const height = 220
+  const pad = { top: 14, right: 14, bottom: 26, left: 34 }
   const innerW = Math.max(0, width - pad.left - pad.right)
   const innerH = height - pad.top - pad.bottom
   const x = (i) => pad.left + (points.length === 1 ? innerW / 2 : (i / (points.length - 1)) * innerW)
   const y = (v) => pad.top + innerH - (v / 100) * innerH
-  const path = points.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.score)}`).join(" ")
+  const line = points.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.score)}`).join(" ")
+  const area = points.length > 1 ? `${line} L${x(points.length - 1)},${y(0)} L${x(0)},${y(0)} Z` : ""
   const slot = points.length > 1 ? innerW / (points.length - 1) : innerW
   const activePoint = active !== null ? points[active] : null
+  const firstDate = fmtDate(points[0].createdAt)
+  const lastDate = fmtDate(points[points.length - 1].createdAt)
 
   return (
     <div ref={ref} className="chart" onMouseLeave={() => setActive(null)}>
@@ -49,12 +52,15 @@ function ScoreChart({ checks }) {
               <text x={pad.left - 8} y={y(v)} dy="0.32em" textAnchor="end" className="chart-axis">{v}</text>
             </g>
           ))}
-          <text x={pad.left} y={height - 4} className="chart-axis">{fmtDate(points[0].createdAt)}</text>
-          {points.length > 1 && fmtDate(points[0].createdAt) !== fmtDate(points[points.length - 1].createdAt) && (
-            <text x={width - pad.right} y={height - 4} textAnchor="end" className="chart-axis">{fmtDate(points[points.length - 1].createdAt)}</text>
+          <line x1={pad.left} x2={width - pad.right} y1={y(70)} y2={y(70)} className="chart-threshold" />
+          <text x={pad.left + 6} y={y(70) - 6} className="chart-axis chart-threshold-label">Strong match (70%)</text>
+          <text x={pad.left} y={height - 4} className="chart-axis">{firstDate}</text>
+          {points.length > 1 && firstDate !== lastDate && (
+            <text x={width - pad.right} y={height - 4} textAnchor="end" className="chart-axis">{lastDate}</text>
           )}
+          {area && <path d={area} className="chart-area" />}
           {activePoint && <line x1={x(active)} x2={x(active)} y1={pad.top} y2={pad.top + innerH} className="chart-crosshair" />}
-          <path d={path} className="chart-line" />
+          <path d={line} className="chart-line" />
           {points.map((p, i) => (
             <circle key={p._id} cx={x(i)} cy={y(p.score)} r={active === i ? 6 : 4} className="chart-dot" />
           ))}
@@ -76,18 +82,75 @@ function ScoreChart({ checks }) {
         </svg>
       )}
       {activePoint && (
-        <div
-          className="chart-tip"
-          style={{
-            left: Math.min(Math.max(x(active), 90), width - 90),
-            top: y(activePoint.score) - 12
-          }}
-        >
+        <div className="chart-tip" style={{ left: Math.min(Math.max(x(active), 90), width - 90), top: y(activePoint.score) - 12 }}>
           <strong>{activePoint.score}%</strong> {scoreBand(activePoint.score).label} match
           <span>{activePoint.resumeName || "Unsaved resume"}, {fmtDate(activePoint.createdAt)}</span>
         </div>
       )}
     </div>
+  )
+}
+
+// A miniature of the resume page, drawn from its real content
+function Thumbnail({ data }) {
+  const skills = (data?.skillsList || []).slice(0, 6)
+  const items = [...(data?.projectsList || []), ...(data?.experienceList || [])].slice(0, 3)
+  return (
+    <div className="thumb" aria-hidden="true">
+      <p className="thumb-name">{data?.name || "Untitled"}</p>
+      <p className="thumb-contact">{[data?.email, data?.phone].filter(Boolean).join(" / ")}</p>
+      {data?.summary && (
+        <>
+          <p className="thumb-h">Summary</p>
+          <p className="thumb-text">{data.summary}</p>
+        </>
+      )}
+      {skills.length > 0 && (
+        <>
+          <p className="thumb-h">Skills</p>
+          <div className="thumb-skills">{skills.map((s, i) => <span key={i}>{s}</span>)}</div>
+        </>
+      )}
+      {items.length > 0 && (
+        <>
+          <p className="thumb-h">Projects and experience</p>
+          {items.map((it, i) => (
+            <p key={i} className="thumb-text"><b>{it.name || it.role}</b> {it.desc}</p>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+function SetupChecklist({ steps }) {
+  const done = steps.filter((s) => s.done).length
+  return (
+    <section className="setup" aria-label="Get set up">
+      <div className="setup-head">
+        <h2 className="dash-h">Get set up</h2>
+        <p className="dash-muted">{done} of {steps.length} done</p>
+      </div>
+      <ol className="setup-steps">
+        {steps.map((s) => {
+          const Icon = s.icon
+          return (
+            <li key={s.title} className={s.done ? "is-done" : undefined}>
+              <span className="setup-mark" aria-hidden="true">
+                {s.done ? <Check size={15} strokeWidth={3} /> : <Icon size={15} strokeWidth={2} />}
+              </span>
+              <div>
+                <h3 className="setup-title">{s.title}</h3>
+                <p className="setup-text">{s.done ? "Done" : s.text}</p>
+                {!s.done && (
+                  <button onClick={s.onClick} className="btn btn-ghost btn-sm setup-action">{s.action}</button>
+                )}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </section>
   )
 }
 
@@ -106,21 +169,56 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
     return <main className="dash"><p className="dash-muted">Loading your dashboard…</p></main>
   }
 
-  const { stats, resumes, checks, commonGaps } = data
+  const { user, stats, resumes, checks, commonGaps } = data
+  const latest = checks[0]
+  const profile = user.profile || {}
+
+  const steps = [
+    {
+      title: "Complete your profile",
+      text: "Add your phone, college and target role so new resumes start filled in.",
+      action: "Edit profile",
+      icon: UserRound,
+      done: Boolean(profile.name && profile.phone && profile.college),
+      onClick: onEditProfile
+    },
+    {
+      title: "Save your first resume",
+      text: "Build a resume, then choose Save resume above the preview.",
+      action: "Build a resume",
+      icon: FileText,
+      done: resumes.length > 0,
+      onClick: onNewResume
+    },
+    {
+      title: "Run an ATS check",
+      text: "Paste a job description to see how well your resume matches it.",
+      action: currentResume ? "Check ATS match" : "Build a resume first",
+      icon: Target,
+      done: checks.length > 0,
+      onClick: onCheckAts
+    }
+  ]
+  const setupDone = steps.every((s) => s.done)
 
   return (
     <main className="dash">
       <div className="dash-head">
         <div>
-          <h1 className="page-title">Welcome back, {greetingName(data.user)}</h1>
+          <h1 className="dash-title">Welcome back, {greetingName(user)}</h1>
           <p className="dash-muted">
-            {data.user.email}, member since {fmtDate(data.user.createdAt, { month: "long", year: "numeric" })}
+            {latest
+              ? `Your last ATS check scored ${latest.score}%, on ${fmtDate(latest.createdAt)}.`
+              : resumes.length
+                ? `You have ${resumes.length} saved ${resumes.length === 1 ? "resume" : "resumes"}. Check one against a job to track your score.`
+                : "Here is where your resumes and ATS progress will live."}
           </p>
-          <button onClick={onEditProfile} className="link-btn dash-profile-link">
-            {data.user.profile?.name ? "Edit profile" : "Add your name and details"}
-          </button>
         </div>
         <div className="dash-head-actions">
+          <button onClick={onEditProfile} className="btn btn-ghost">
+            <UserRound size={16} strokeWidth={2} />
+            Profile
+          </button>
           {currentResume && (
             <button onClick={onContinue} className="btn btn-ghost">Continue editing</button>
           )}
@@ -131,115 +229,143 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
         </div>
       </div>
 
-      <dl className="dash-stats">
-        <div>
-          <dt>Saved resumes</dt>
-          <dd>{stats.resumeCount}</dd>
-        </div>
-        <div>
-          <dt>Best ATS match</dt>
-          <dd>{stats.bestScore === null ? "None yet" : `${stats.bestScore}%`}</dd>
-        </div>
-        <div>
-          <dt>ATS checks in the last 30 days</dt>
-          <dd>{stats.checksThisMonth}</dd>
-        </div>
-      </dl>
+      {!setupDone && <SetupChecklist steps={steps} />}
 
-      <div className="dash-grid">
-        <div>
-          <section className="dash-section">
-            <h2 className="dash-h">ATS score history</h2>
-            {checks.length === 0 ? (
-              <div>
-                <p className="dash-muted">No checks yet. Each time you check a resume against a job description, the score is added here so you can see your progress.</p>
-                <button onClick={onCheckAts} className="btn btn-ghost btn-sm dash-empty-action">
-                  {currentResume ? "Check your ATS match" : "Build a resume to check"}
+      <section className="shelf" aria-labelledby="shelf-title">
+        <div className="shelf-head">
+          <h2 id="shelf-title" className="dash-h">Your resumes</h2>
+          {resumes.length > 0 && <p className="dash-muted">{resumes.length} saved</p>}
+        </div>
+        {resumes.length === 0 && (
+          <p className="dash-muted shelf-empty-note">Resumes you save appear here as pages you can open with one click.</p>
+        )}
+        <ul className={resumes.length === 0 ? "shelf-grid shelf-grid-empty" : "shelf-grid"}>
+          {resumes.map((r) => {
+            const band = r.latestScore === null ? null : scoreBand(r.latestScore)
+            return (
+              <li key={r._id} className="shelf-item">
+                <button onClick={() => onOpenResume(r)} className="shelf-open" aria-label={`Open ${r.name}`}>
+                  <Thumbnail data={r.data} />
                 </button>
-              </div>
-            ) : (
-              <ScoreChart checks={checks} />
-            )}
-          </section>
-
-          <section className="dash-section">
-            <h2 className="dash-h">Your resumes</h2>
-            {resumes.length === 0 ? (
-              <div>
-                <p className="dash-muted">Nothing saved yet. Build a resume, then choose Save resume above the preview.</p>
-                <button onClick={onNewResume} className="btn btn-ghost btn-sm dash-empty-action">Build your first resume</button>
-              </div>
-            ) : (
-              <ul className="dash-list">
-                {resumes.map((r) => (
-                  <li key={r._id} className="dash-row">
-                    <div className="dash-row-main">
-                      <p className="saved-name">{r.name}</p>
-                      <p className="saved-date">Edited {fmtDate(r.updatedAt, { day: "numeric", month: "short", year: "numeric" })}</p>
-                    </div>
-                    <p className="dash-score">
-                      {r.latestScore === null ? (
-                        <span className="dash-muted">Not scored</span>
+                <div className="shelf-meta">
+                  <div className="shelf-meta-main">
+                    <p className="shelf-name" title={r.name}>{r.name}</p>
+                    <p className="shelf-sub">
+                      {band ? (
+                        <><span className="dash-dot" style={{ background: band.color }} aria-hidden="true"></span>{r.latestScore}% {band.label.toLowerCase()} match</>
                       ) : (
-                        <>
-                          <span className="dash-dot" style={{ background: scoreBand(r.latestScore).color }} aria-hidden="true"></span>
-                          {r.latestScore}% <span className="dash-muted">{scoreBand(r.latestScore).label}</span>
-                        </>
+                        <>Edited {fmtDate(r.updatedAt)}</>
                       )}
                     </p>
-                    <div className="saved-actions">
-                      <button onClick={() => onOpenResume(r)} className="btn btn-ghost btn-sm">Open</button>
-                      {confirmDelete === r._id ? (
-                        <button onClick={() => { onDeleteResume(r._id); setConfirmDelete(null) }} className="btn btn-danger btn-sm" autoFocus onBlur={() => setConfirmDelete(null)}>Confirm delete</button>
-                      ) : (
-                        <button onClick={() => setConfirmDelete(r._id)} className="btn btn-danger btn-sm">Delete</button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
+                  </div>
+                  {confirmDelete === r._id ? (
+                    <button
+                      onClick={() => { onDeleteResume(r._id); setConfirmDelete(null) }}
+                      onBlur={() => setConfirmDelete(null)}
+                      className="btn btn-danger btn-sm"
+                      autoFocus
+                    >
+                      Delete?
+                    </button>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(r._id)} className="icon-btn icon-btn-sm" aria-label={`Delete ${r.name}`} title="Delete">
+                      <Trash2 size={15} strokeWidth={2} />
+                    </button>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+          <li className="shelf-item">
+            <button onClick={onNewResume} className="shelf-new">
+              <Plus size={22} strokeWidth={2} />
+              <span>New resume</span>
+            </button>
+          </li>
+        </ul>
+      </section>
 
-        <div>
-          <section className="dash-section">
-            <h2 className="dash-h">Keywords you keep missing</h2>
-            {commonGaps.length === 0 ? (
-              <p className="dash-muted">After a few ATS checks, keywords that job descriptions ask for but your resumes lack will show up here.</p>
-            ) : (
-              <>
-                <p className="dash-muted dash-note">Adding these would help across several of the jobs you checked.</p>
-                <ul className="gap-list">
-                  {commonGaps.map((g) => (
-                    <li key={g.keyword}>
-                      <span className="kw-missing">{g.keyword}</span>
-                      <span className="dash-muted">missing in {g.count} of {checks.length} checks</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </section>
-
-          {checks.length > 0 && (
-            <section className="dash-section">
-              <h2 className="dash-h">Recent checks</h2>
-              <ul className="dash-list">
-                {checks.slice(0, 6).map((c) => (
-                  <li key={c._id} className="check-row">
-                    <p className="check-score">{c.score}%</p>
-                    <div>
-                      <p className="check-job">{c.jobSnippet || "Job description"}</p>
-                      <p className="saved-date">{c.resumeName || "Unsaved resume"}, {fmtDate(c.createdAt)}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+      {checks.length === 0 ? (
+        <section className="panel panel-empty">
+          <h2 className="dash-h">ATS progress</h2>
+          <p className="dash-muted">
+            Your score history and the keywords you keep missing will appear here after your first ATS check.
+          </p>
+        </section>
+      ) : (
+        <>
+          <div className="dash-grid">
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="dash-h">ATS progress</h2>
+              </div>
+              <dl className="figures">
+                <div>
+                  <dt>Latest</dt>
+                  <dd>{latest.score}%</dd>
+                </div>
+                <div>
+                  <dt>Best</dt>
+                  <dd>{stats.bestScore}%</dd>
+                </div>
+                <div>
+                  <dt>Checks in the last 30 days</dt>
+                  <dd>{stats.checksThisMonth}</dd>
+                </div>
+              </dl>
+              <ScoreChart checks={checks} />
             </section>
-          )}
-        </div>
-      </div>
+
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="dash-h">Keywords to add</h2>
+              </div>
+              {commonGaps.length === 0 ? (
+                <p className="dash-muted">
+                  When the same keyword is missing from two or more jobs you check, it shows up here.
+                </p>
+              ) : (
+                <>
+                  <p className="dash-muted dash-note">These came up as missing in more than one job you checked.</p>
+                  <ul className="gap-list">
+                    {commonGaps.map((g) => (
+                      <li key={g.keyword}>
+                        <span className="kw-missing">{g.keyword}</span>
+                        <span className="gap-count">{g.count} of {checks.length} jobs</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+          </div>
+
+          <section className="panel">
+            <div className="panel-head">
+              <h2 className="dash-h">Recent checks</h2>
+            </div>
+            <ul className="checks">
+              {checks.slice(0, 5).map((c) => {
+                const band = scoreBand(c.score)
+                return (
+                  <li key={c._id} className="check">
+                    <div className="check-score">
+                      <span className="check-num">{c.score}%</span>
+                      <span className="check-bar" aria-hidden="true">
+                        <span style={{ width: `${c.score}%`, background: band.color }}></span>
+                      </span>
+                    </div>
+                    <div className="check-body">
+                      <p className="check-job">{c.jobSnippet || "Job description"}</p>
+                      <p className="shelf-sub">{c.resumeName || "Unsaved resume"}, {fmtDate(c.createdAt)}</p>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        </>
+      )}
     </main>
   )
 }

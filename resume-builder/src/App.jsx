@@ -162,6 +162,7 @@ Return ONLY a JSON object with no markdown or backticks:
         }
       }
       setResume(data)
+      revealPreview()
     } catch (e) {
       setBuildError("Something went wrong generating your resume. Please try again.")
     }
@@ -319,6 +320,17 @@ Return ONLY a JSON object with no markdown or backticks:
     }
   }
 
+  // On narrow screens the preview sits below the form, so bring it into view
+  function revealPreview() {
+    if (window.innerWidth > 1024) return
+    requestAnimationFrame(() => {
+      const desk = document.querySelector(".desk")
+      if (!desk) return
+      const headerHeight = headerRef.current?.offsetHeight || 0
+      window.scrollTo({ top: desk.getBoundingClientRect().top + window.scrollY - headerHeight, behavior: "smooth" })
+    })
+  }
+
   function goHome() {
     setView("home")
     setPanelOpen(false)
@@ -432,6 +444,7 @@ Return ONLY a JSON object with no markdown or backticks:
     setView("workspace")
     setActiveTab("Build")
     window.scrollTo({ top: 0 })
+    revealPreview()
   }
 
   if (appLoading) {
