@@ -8,7 +8,7 @@ Built as a final year B.Tech project at Shambhunath Institute of Engineering Tec
 
 ## Features
 
-- **AI Resume Generation** — Generate professional resumes from basic input using Groq's Llama 3.1 model
+- **AI Resume Generation** — Generate professional resumes from basic input using the GPT-OSS 20B model via Groq
 - **ATS Score Analysis** — Paste any job description and get a match score with found and missing keywords
 - **AI Suggestions** — Get specific, actionable improvements for your resume based on target roles
 - **Inline Editing** — Click any section of the generated resume to edit it directly
@@ -37,7 +37,15 @@ Built as a final year B.Tech project at Shambhunath Institute of Engineering Tec
 - MongoDB Atlas
 
 **AI**
-- Groq API (Llama 3.1 8B Instant)
+- Groq API (`openai/gpt-oss-20b`, low reasoning effort)
+
+---
+
+## Recent Updates
+
+- **Fixed resume generation 500 errors.** Groq removed `llama-3.1-8b-instant`, so every AI request failed. The backend now uses `openai/gpt-oss-20b`.
+- **Fixed empty AI results.** The new model used almost its whole token budget on internal reasoning and returned no JSON. Build, ATS Score and Suggestions quietly fell back to empty results. `reasoning_effort` is now `"low"` and `max_tokens` is raised from 1000 to 1500.
+- **Fixed PDF export clipping.** Long Projects and Experience sections no longer get cut off in the downloaded PDF.
 
 ---
 
