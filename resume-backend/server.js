@@ -208,6 +208,10 @@ app.post("/resumes", requireAuth, async (req, res) => {
   try {
     const resume = new Resume({ userId: req.userId, name: name.trim(), data })
     await resume.save()
+    await ScoreCheck.updateMany(
+      { userId: req.userId, resumeId: null, resumeName: resume.name },
+      { $set: { resumeId: resume._id.toString() } }
+    )
     res.json(resume)
   } catch (e) {
     res.status(500).json({ error: "Failed to save resume" })
@@ -220,6 +224,13 @@ app.delete("/resumes/:id", requireAuth, async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ error: "Resume not found" })
     }
+    await ScoreCheck.deleteMany({
+      userId: req.userId,
+      $or: [
+        { resumeId: deleted._id.toString() },
+        { resumeId: null, resumeName: deleted.name }
+      ]
+    })
     res.json({ success: true })
   } catch (e) {
     res.status(500).json({ error: "Failed to delete resume" })
@@ -509,13 +520,32 @@ app.delete("/roadmaps/:id", requireAuth, async (req, res) => {
 
 app.get("/dashboard", requireAuth, async (req, res) => {
   try {
-    const [user, resumes, checks, roadmaps] = await Promise.all([
+    const [user, resumes, allChecks, allRoadmaps] = await Promise.all([
       User.findById(req.userId),
       Resume.find({ userId: req.userId }).sort({ updatedAt: -1, createdAt: -1 }),
-      ScoreCheck.find({ userId: req.userId }).sort({ createdAt: -1 }).limit(50),
+      ScoreCheck.find({ userId: req.userId }).sort({ createdAt: -1 }).limit(100),
       Roadmap.find({ userId: req.userId }).sort({ updatedAt: -1 })
     ])
     if (!user) return res.status(401).json({ error: "Account not found. Log in again." })
+
+    // A check counts only while its resume exists. Older checks may only carry the resume's name.
+    const resumeIds = new Set(resumes.map((r) => r._id.toString()))
+    const idByName = {}
+    for (const r of resumes) if (!(r.name in idByName)) idByName[r.name] = r._id.toString()
+    const checks = allChecks
+      .map((c) => {
+        const id = c.resumeId && resumeIds.has(c.resumeId) ? c.resumeId : !c.resumeId ? idByName[c.resumeName] : null
+        if (!id) return null
+        const check = c.toObject()
+        check.resumeId = id
+        return check
+      })
+      .filter(Boolean)
+      .slice(0, 50)
+
+    // Hide untouched plans whose keyword no longer shows up in any remaining check
+    const missingNow = new Set(checks.flatMap((c) => c.missingKeywords.map((k) => k.toLowerCase())))
+    const roadmaps = allRoadmaps.filter((r) => r.done.length > 0 || missingNow.has(r.key))
 
     const latestScoreByResume = {}
     for (const c of checks) {
