@@ -6,7 +6,7 @@ function verdict(score) {
   return { text: "Weak match", color: "var(--pen)" }
 }
 
-export default function ATSScorer({ onScore, loading, result }) {
+export default function ATSScorer({ onScore, loading, result, onPlan }) {
   const [jd, setJd] = useState("")
   const v = result ? verdict(result.score) : null
 
@@ -49,8 +49,11 @@ export default function ATSScorer({ onScore, loading, result }) {
           {result.missingKeywords?.length > 0 && (
             <div className="kw-group">
               <h3 className="kw-title">Keywords to add</h3>
+              <p className="kw-hint">Tap a keyword to get a short plan for actually learning it.</p>
               <div className="kw-list">
-                {result.missingKeywords.map((k, i) => <span key={i} className="kw-missing">{k}</span>)}
+                {result.missingKeywords.map((k, i) => (
+                  <button key={i} className="kw-missing kw-plan" onClick={() => onPlan(k)} title={`Get a plan to learn ${k}`}>{k}</button>
+                ))}
               </div>
             </div>
           )}

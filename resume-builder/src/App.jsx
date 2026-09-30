@@ -11,6 +11,7 @@ import Dashboard from "./components/Dashboard"
 import Landing from "./components/Landing"
 import SidePanel from "./components/SidePanel"
 import ProfileSettings from "./components/ProfileSettings"
+import Roadmap from "./components/Roadmap"
 import { api, getToken, setToken, BACKEND_URL } from "./auth"
 
 const TABS = ["Build", "ATS Score", "Suggestions"]
@@ -52,6 +53,8 @@ export default function App() {
   const [dashboard, setDashboard] = useState(null)
   const [dashboardError, setDashboardError] = useState(null)
   const [saveNote, setSaveNote] = useState(null)
+  // The skill roadmap being viewed: { keyword, data, loading, error }
+  const [roadmap, setRoadmap] = useState(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const headerRef = useRef(null)
 
@@ -306,9 +309,76 @@ Return ONLY a JSON object with no markdown or backticks:
     setSuggestResult(null)
   }
 
-  function showSaveNote() {
-    setSaveNote("Saved to your dashboard")
-    setTimeout(() => setSaveNote(null), 4000)
+  function showSaveNote(text = "Saved to your dashboard", ms = 4000) {
+    setSaveNote(text)
+    setTimeout(() => setSaveNote(null), ms)
+  }
+
+  async function fetchRoadmap(keyword) {
+    setRoadmap({ keyword, data: null, loading: true, error: null })
+    try {
+      const data = await api("/roadmaps", { method: "POST", body: { keyword } })
+      setRoadmap({ keyword, data, loading: false, error: null })
+    } catch (e) {
+      setRoadmap({ keyword, data: null, loading: false, error: describeApiError(e, "Could not reach the server. Check that the backend is running.") })
+    }
+  }
+
+  function openRoadmap(keyword) {
+    requireLogin(`Log in to get a learning plan for ${keyword}.`, () => {
+      setView("roadmap")
+      setPanelOpen(false)
+      window.scrollTo({ top: 0 })
+      fetchRoadmap(keyword)
+    })
+  }
+
+  async function toggleRoadmapTask(taskId) {
+    const current = roadmap?.data
+    if (!current) return
+    const done = current.done.includes(taskId) ? current.done.filter((id) => id !== taskId) : [...current.done, taskId]
+    setRoadmap((r) => ({ ...r, data: { ...r.data, done } }))
+    try {
+      const saved = await api(`/roadmaps/${current._id}`, { method: "PATCH", body: { done } })
+      setRoadmap((r) => ({ ...r, data: saved }))
+    } catch (e) {
+      setRoadmap((r) => ({ ...r, data: current, error: null }))
+      describeApiError(e, null)
+    }
+  }
+
+  async function deleteRoadmap(r) {
+    try {
+      await api(`/roadmaps/${r._id}`, { method: "DELETE" })
+      setRoadmap(null)
+      goHome()
+    } catch (e) {
+      describeApiError(e, null)
+    }
+  }
+
+  // Adds the learned skill and its project to the open resume, or to the most recently edited saved one
+  function addRoadmapToResume(r) {
+    const saved = dashboard?.resumes?.[0]
+    const base = resume || saved?.data
+    const p = user?.profile || {}
+    const target = base
+      ? { ...base }
+      : { name: p.name || "", email: user?.email || "", phone: p.phone || "", summary: "", education: [p.college, p.cgpa].filter(Boolean).join(" | "), skillsList: [], projectsList: [], experienceList: [] }
+    const skills = target.skillsList || []
+    const hasSkill = skills.some((sk) => sk.toLowerCase() === r.keyword.toLowerCase())
+    target.skillsList = hasSkill ? skills : [...skills, r.keyword]
+    const projects = target.projectsList || []
+    const hasProject = projects.some((pr) => pr.name === r.plan.project.title)
+    target.projectsList = hasProject ? projects : [...projects, { name: r.plan.project.title, desc: r.plan.resumeLine || r.plan.project.description }]
+
+    setResume(target)
+    if (!resume) setLoadedResumeId(saved?._id || null)
+    setActiveTab("Build")
+    setView("workspace")
+    window.scrollTo({ top: 0 })
+    revealPreview()
+    showSaveNote(`Added ${r.keyword} and your project. Review it, then save.`, 8000)
   }
 
   async function loadDashboard() {
@@ -528,7 +598,20 @@ Return ONLY a JSON object with no markdown or backticks:
         </div>
       </header>
 
-      {view === "profile" && user ? (
+      {view === "roadmap" && roadmap ? (
+        <Roadmap
+          keyword={roadmap.keyword}
+          roadmap={roadmap.data}
+          loading={roadmap.loading}
+          error={roadmap.error}
+          jobsAsking={dashboard?.commonGaps?.find((g) => g.keyword.toLowerCase() === roadmap.keyword.toLowerCase())?.count || 0}
+          onToggle={toggleRoadmapTask}
+          onAddToResume={addRoadmapToResume}
+          onDelete={deleteRoadmap}
+          onRetry={() => fetchRoadmap(roadmap.keyword)}
+          onBack={goHome}
+        />
+      ) : view === "profile" && user ? (
         <ProfileSettings user={user} onSaved={handleProfileSaved} onBack={goHome} />
       ) : view === "home" || view === "profile" ? (
         user ? (
@@ -542,6 +625,7 @@ Return ONLY a JSON object with no markdown or backticks:
             onNewResume={startNewResume}
             onCheckAts={() => openBuilder(resume ? "ATS Score" : "Build")}
             onEditProfile={openProfile}
+            onPlan={openRoadmap}
             onRetry={loadDashboard}
           />
         ) : authChecking ? (
@@ -560,7 +644,7 @@ Return ONLY a JSON object with no markdown or backticks:
               <ResumeForm formData={formData} setFormData={setFormData} onGenerate={handleGenerate} onClear={handleClearForm} loading={buildLoading} />
             )}
             {activeTab === "ATS Score" && (
-              <ATSScorer onScore={handleScore} loading={scoreLoading} result={scoreResult} />
+              <ATSScorer onScore={handleScore} loading={scoreLoading} result={scoreResult} onPlan={openRoadmap} />
             )}
             {activeTab === "Suggestions" && (
               <Suggestions onSuggest={handleSuggest} loading={suggestLoading} result={suggestResult} />

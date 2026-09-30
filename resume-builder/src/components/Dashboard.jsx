@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect } from "react"
-import { Plus, Check, Trash2, UserRound, FileText, Target } from "lucide-react"
+import { Plus, Check, Trash2, UserRound, FileText, Target, Route } from "lucide-react"
 
 const fmtDate = (d, opts = { day: "numeric", month: "short" }) => new Date(d).toLocaleDateString(undefined, opts)
 
@@ -154,8 +154,9 @@ function SetupChecklist({ steps }) {
   )
 }
 
-export default function Dashboard({ data, error, currentResume, onContinue, onOpenResume, onDeleteResume, onNewResume, onCheckAts, onEditProfile, onRetry }) {
+export default function Dashboard({ data, error, currentResume, onContinue, onOpenResume, onDeleteResume, onNewResume, onCheckAts, onEditProfile, onPlan, onRetry }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [showAllPlans, setShowAllPlans] = useState(false)
 
   if (error) {
     return (
@@ -170,6 +171,8 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
   }
 
   const { user, stats, resumes, checks, commonGaps } = data
+  const roadmaps = data.roadmaps || []
+  const roadmapFor = (keyword) => roadmaps.find((r) => r.keyword.toLowerCase() === keyword.toLowerCase())
   const latest = checks[0]
   const profile = user.profile || {}
 
@@ -316,6 +319,7 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
               <ScoreChart checks={checks} />
             </section>
 
+            <div className="dash-stack">
             <section className="panel">
               <div className="panel-head">
                 <h2 className="dash-h">Keywords to add</h2>
@@ -326,18 +330,55 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
                 </p>
               ) : (
                 <>
-                  <p className="dash-muted dash-note">These came up as missing in more than one job you checked.</p>
+                  <p className="dash-muted dash-note">
+                    These came up as missing in more than one job you checked. Instead of just adding the word, get a short plan to actually learn it.
+                  </p>
                   <ul className="gap-list">
-                    {commonGaps.map((g) => (
-                      <li key={g.keyword}>
-                        <span className="kw-missing">{g.keyword}</span>
-                        <span className="gap-count">{g.count} of {checks.length} jobs</span>
-                      </li>
-                    ))}
+                    {commonGaps.map((g) => {
+                      const plan = roadmapFor(g.keyword)
+                      return (
+                        <li key={g.keyword}>
+                          <div className="gap-main">
+                            <span className="kw-missing">{g.keyword}</span>
+                            <span className="gap-count">{g.count} of {checks.length} jobs</span>
+                          </div>
+                          <button onClick={() => onPlan(g.keyword)} className="btn btn-ghost btn-sm">
+                            {!plan ? <><Route size={14} strokeWidth={2} /> Learn it</> : plan.learned ? "Learned" : `${plan.done}/${plan.total} done`}
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </>
               )}
             </section>
+
+            {roadmaps.length > 0 && (
+              <section className="panel">
+                <div className="panel-head">
+                  <h2 className="dash-h">Skills you're learning</h2>
+                </div>
+                <ul className="learning-list">
+                  {(showAllPlans ? roadmaps : roadmaps.slice(0, 5)).map((r) => (
+                    <li key={r._id}>
+                      <button onClick={() => onPlan(r.keyword)} className="learning-item">
+                        <span className="learning-top">
+                          <span className="learning-name">{r.keyword}</span>
+                          <span className="gap-count">{r.learned ? "Learned" : `${r.done} of ${r.total} steps`}</span>
+                        </span>
+                        <span className="roadmap-bar" aria-hidden="true"><span style={{ width: `${(r.done / r.total) * 100}%` }}></span></span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {roadmaps.length > 5 && (
+                  <button onClick={() => setShowAllPlans(!showAllPlans)} className="link-btn learning-more">
+                    {showAllPlans ? "Show fewer" : `Show all ${roadmaps.length}`}
+                  </button>
+                )}
+              </section>
+            )}
+            </div>
           </div>
 
           <section className="panel">
