@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react"
 import { X, RotateCcw } from "lucide-react"
 import {
   FONTS, PRESETS, SIZE_RANGES, LINE_SPACING_RANGE, DIVIDER_WIDTH_RANGE, BORDER_WIDTH_RANGE,
-  DIVIDER_STYLES, BORDER_TYPES, BORDER_STYLES, SECTION_SPACINGS, presetMatching, cssFamily
+  DIVIDER_STYLES, BORDER_TYPES, BORDER_STYLES, SECTION_SPACINGS, presetMatching, cssFamily, MODES, ACCENTS
 } from "../resumeStyle"
 
 const cap = (s) => s[0].toUpperCase() + s.slice(1)
@@ -85,6 +85,54 @@ export default function DesignPanel({ style, onChange, onPreset, onReset, onAppl
       </div>
       <p className="design-sub">Changes show in the preview straight away, and the PDF matches them exactly.</p>
       {pageNote && <div className="page-warning design-note" role="alert">{pageNote}</div>}
+
+      <section className="design-group">
+        <h3 className="design-h">Mode</h3>
+        <div className="modes" role="radiogroup" aria-label="Design mode">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={style.mode === m.id}
+              className={`mode-card${style.mode === m.id ? " is-on" : ""}`}
+              onClick={() => set({ mode: m.id })}
+            >
+              <span className="mode-name">{m.label}</span>
+              <span className="mode-hint">{m.hint}</span>
+              <span className={`mode-safety is-${m.id}`}>{m.safety}</span>
+            </button>
+          ))}
+        </div>
+        {style.mode === "creative" && (
+          <div className="page-warning design-note" role="alert">
+            ATS software can misread two columns and graphics. For online applications, use Formal; keep Creative for printed or emailed copies.
+          </div>
+        )}
+        {style.mode !== "formal" && (
+          <div className="design-row accent-row">
+            <span className="design-label">Accent colour</span>
+            <div className="swatches" role="radiogroup" aria-label="Accent colour">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={style.accent === a.id}
+                  aria-label={a.label}
+                  title={a.label}
+                  className={`swatch${style.accent === a.id ? " is-on" : ""}`}
+                  style={{ background: a.hex }}
+                  onClick={() => set({ accent: a.id })}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        {style.mode === "creative" && (
+          <p className="design-sub">Skill bars show for skills you give a level to. Set levels in the Edit view.</p>
+        )}
+      </section>
 
       <section className="design-group">
         <h3 className="design-h">Presets</h3>

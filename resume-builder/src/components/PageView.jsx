@@ -34,15 +34,18 @@ export default function PageView({ layout }) {
                 </text>
               )
             }
+            if (item.t === "rect" && item.fill) {
+              return <rect key={j} x={item.x} y={item.y} width={item.w} height={item.h} rx={item.rx || 0} fill={item.fill} />
+            }
             const stroke = {
-              stroke: "#1b1f27",
+              stroke: item.color || "#1b1f27",
               strokeWidth: item.width * PT,
               strokeDasharray: dashPattern(item.dash, item.width).join(" ") || undefined,
               strokeLinecap: item.dash === "dotted" ? "round" : "butt",
               fill: "none"
             }
             if (item.t === "line") return <line key={j} x1={item.x1} y1={item.y1} x2={item.x2} y2={item.y2} {...stroke} />
-            return <rect key={j} x={item.x} y={item.y} width={item.w} height={item.h} {...stroke} />
+            return <rect key={j} x={item.x} y={item.y} width={item.w} height={item.h} rx={item.rx || 0} {...stroke} />
           })}
         </svg>
       ))}

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react"
-import { Download, Palette, PencilLine, FileText } from "lucide-react"
+import { Download, Palette, PencilLine, FileText, Mail, Phone } from "lucide-react"
 import { SortableList, SortableItem, ReorderTools } from "./Sortable"
 import { buildResumePdf, layoutWithStyle } from "../pdf"
 import PageView from "./PageView"
 import DesignPanel from "./DesignPanel"
-import { getStyle, normalizeStyle, PRESETS, DEFAULT_STYLE, cssFamily, SECTION_SPACINGS } from "../resumeStyle"
+import { getStyle, normalizeStyle, PRESETS, DEFAULT_STYLE, cssFamily, SECTION_SPACINGS, accentOf, getSkillLevels } from "../resumeStyle"
 import LengthPicker from "./LengthPicker"
 import { getSectionOrder, isDefaultOrder, sectionTitle, sectionHasContent, withSettings, moveItem, DEFAULT_SECTION_ORDER, lengthLevel } from "../resumeLayout"
 
@@ -18,6 +18,24 @@ function removeArrayItem(array, index) {
 
 function addArrayItem(array, newItem) {
   return [...(array || []), newItem]
+}
+
+// Five dots to set a skill's level for Creative mode's skill bars; pressing the current level clears it
+function LevelDots({ skill, level, onChange }) {
+  return (
+    <span className="level-dots" role="group" aria-label={`${skill} level`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className={`level-dot${level >= n ? " is-on" : ""}`}
+          aria-label={`${skill} level ${n} of 5`}
+          aria-pressed={level === n}
+          onClick={() => onChange(level === n ? 0 : n)}
+        />
+      ))}
+    </span>
+  )
 }
 
 function EditableText({ value, onChange, multiline, block, placeholder }) {
@@ -60,7 +78,10 @@ function styleVars(style) {
   const t = (role) => style.text[role]
   const dividerWidth = style.divider.style === "double" ? Math.max(style.divider.width * 3, 2.25) : style.divider.width
   const borderWidth = style.border.type === "double" ? Math.max(style.border.width * 3, 2.25) : style.border.width
+  const accent = style.mode === "formal" ? "#1b1f27" : accentOf(style).hex
   return {
+    "--r-accent": accent,
+    "--r-tint": accentOf(style).tint,
     "--r-head-font": `"${cssFamily(style.headingFont)}"`,
     "--r-body-font": `"${cssFamily(style.bodyFont)}"`,
     "--r-name-size": `${style.sizes.name}pt`,
@@ -78,7 +99,7 @@ function styleVars(style) {
     "--r-sub-case": t("subheading").upper ? "uppercase" : "none",
     "--r-line": style.lineSpacing,
     "--r-gap": `${SECTION_SPACINGS.find((x) => x.id === style.sectionSpacing).mm}mm`,
-    "--r-divider": style.divider.show ? `${dividerWidth}pt ${style.divider.style} #1b1f27` : "0 none transparent",
+    "--r-divider": style.divider.show ? `${dividerWidth}pt ${style.divider.style} ${accent}` : "0 none transparent",
     "--r-border": style.border.type === "none" ? "0 none transparent" : `${borderWidth}pt ${style.border.type === "double" ? "double" : style.border.style} #1b1f27`
   }
 }
@@ -175,6 +196,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
   }
 
   const set = (patch) => onResumeChange({ ...resume, ...patch })
+  const skillLevels = getSkillLevels(resume)
 
   const order = getSectionOrder(resume)
   const visibleSections = order.filter((id) => sectionHasContent(resume, id))
@@ -246,7 +268,31 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         <EditableText value={resume.education} onChange={(v) => set({ education: v })} />
       </p>
     ),
-    skills: () => (
+    skills: () => style.mode === "creative" ? (
+      <ul className="skill-levels">
+        {(resume.skillsList || []).map((skill, i) => (
+          <li key={i}>
+            <EditableText
+              value={skill}
+              onChange={(v) => set({ skillsList: v.trim() ? updateArrayItem(resume.skillsList, i, v) : removeArrayItem(resume.skillsList, i) })}
+            />
+            <LevelDots
+              skill={skill}
+              level={skillLevels[skill] || 0}
+              onChange={(n) => {
+                const next = { ...skillLevels }
+                if (n) next[skill] = n
+                else delete next[skill]
+                onResumeChange(withSettings(resume, { skillLevels: next }))
+              }}
+            />
+          </li>
+        ))}
+        <li>
+          <button onClick={() => set({ skillsList: addArrayItem(resume.skillsList, "New skill") })} className="add-line">+ Add skill</button>
+        </li>
+      </ul>
+    ) : (
       <div className="skills">
         {(resume.skillsList || []).map((skill, i) => (
           <span key={i} className="skill">
@@ -387,7 +433,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         <DesignPanel
           style={style}
           onChange={setStyle}
-          onPreset={(id) => setStyle(PRESETS.find((p) => p.id === id).style)}
+          onPreset={(id) => setStyle({ ...PRESETS.find((p) => p.id === id).style, mode: style.mode, accent: style.accent })}
           onReset={() => setStyle(DEFAULT_STYLE)}
           onApplyAll={applyToAll}
           canApplyAll={canApplyAll}
@@ -397,13 +443,21 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         />
       )}
 
-      <article className="paper styled-paper" style={styleVars(style)} hidden={view !== "edit"}>
+      {style.mode === "creative" && (
+        <p className="mode-banner" role="note">
+          Creative mode: ATS software can misread its two columns, so use Formal for online applications.
+          {view === "edit" && " The two-column layout shows in Pages."}
+        </p>
+      )}
+
+      <article className="paper styled-paper" data-mode={style.mode} style={styleVars(style)} hidden={view !== "edit"}>
         <h1 className="paper-name">
           <EditableText value={resume.name} onChange={(v) => set({ name: v })} />
         </h1>
         <p className="paper-contact">
+          {style.mode !== "formal" && <Mail size={13} className="contact-icon" aria-hidden="true" />}
           <EditableText value={resume.email} onChange={(v) => set({ email: v })} placeholder="Email" />
-          <span className="paper-contact-sep" aria-hidden="true">/</span>
+          {style.mode === "formal" ? <span className="paper-contact-sep" aria-hidden="true">/</span> : <Phone size={13} className="contact-icon" aria-hidden="true" />}
           <EditableText value={resume.phone} onChange={(v) => set({ phone: v })} placeholder="Phone" />
         </p>
 

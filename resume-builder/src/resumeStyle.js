@@ -32,6 +32,21 @@ export const SECTION_SPACINGS = [
   { id: "relaxed", label: "Relaxed", mm: 8.5 }
 ]
 
+// Design modes (FR-5): how visual the resume is. The text is the same in every mode.
+export const MODES = [
+  { id: "formal", label: "Formal", hint: "Text only, one column, black and grey", safety: "Safest for ATS" },
+  { id: "modern", label: "Modern", hint: "Accent colour, contact icons, skill tags", safety: "Safe for ATS" },
+  { id: "creative", label: "Creative", hint: "Two columns with a sidebar and skill bars", safety: "Risky for ATS" }
+]
+export const ACCENTS = [
+  { id: "navy", label: "Navy", hex: "#1f4e79", tint: "#e8eef5" },
+  { id: "teal", label: "Teal", hex: "#0f766e", tint: "#e3f2ef" },
+  { id: "maroon", label: "Maroon", hex: "#8c1d3a", tint: "#f6e7eb" },
+  { id: "forest", label: "Forest", hex: "#2f6b3a", tint: "#e7f1e8" },
+  { id: "plum", label: "Plum", hex: "#5b3a87", tint: "#efe9f6" }
+]
+export const accentOf = (style) => ACCENTS.find((a) => a.id === style.accent) || ACCENTS[0]
+
 // Classic matches how resumes looked before style settings existed
 export const DEFAULT_STYLE = {
   headingFont: "source-serif-4",
@@ -45,7 +60,9 @@ export const DEFAULT_STYLE = {
   divider: { show: true, style: "solid", width: 0.75 },
   border: { type: "none", style: "solid", width: 1 },
   lineSpacing: 1.3,
-  sectionSpacing: "normal"
+  sectionSpacing: "normal",
+  mode: "formal",
+  accent: "navy"
 }
 
 export const PRESETS = [
@@ -112,15 +129,29 @@ export function normalizeStyle(saved) {
       width: clamp(s.border?.width, BORDER_WIDTH_RANGE, d.border.width)
     },
     lineSpacing: clamp(s.lineSpacing, LINE_SPACING_RANGE, d.lineSpacing),
-    sectionSpacing: pick(s.sectionSpacing, SECTION_SPACINGS.map((x) => x.id), d.sectionSpacing)
+    sectionSpacing: pick(s.sectionSpacing, SECTION_SPACINGS.map((x) => x.id), d.sectionSpacing),
+    mode: pick(s.mode, MODES.map((m) => m.id), d.mode),
+    accent: pick(s.accent, ACCENTS.map((a) => a.id), d.accent)
   }
 }
 
 export const getStyle = (resume) => normalizeStyle(resume?.settings?.style)
 
+const withoutMode = (style) => {
+  // eslint-disable-next-line no-unused-vars
+  const { mode, accent, ...rest } = normalizeStyle(style)
+  return JSON.stringify(rest)
+}
 export function presetMatching(style) {
-  const json = JSON.stringify(normalizeStyle(style))
-  return PRESETS.find((p) => JSON.stringify(normalizeStyle(p.style)) === json)?.id || null
+  const json = withoutMode(style)
+  return PRESETS.find((p) => withoutMode(p.style) === json)?.id || null
+}
+
+// Skill levels (1-5) for Creative mode's skill bars, set by the user; a skill without one shows no bar
+export function getSkillLevels(resume) {
+  const saved = resume?.settings?.skillLevels
+  if (!saved || typeof saved !== "object") return {}
+  return Object.fromEntries(Object.entries(saved).filter(([, v]) => Number.isInteger(v) && v >= 1 && v <= 5))
 }
 
 // jsPDF style name for a bold/italic pair
