@@ -1637,3 +1637,200 @@ textarea.editable-input { min-height: 64px; resize: vertical; }
   .length-option { flex: 1; }
   .length-option span { text-align: center; padding: 9px 6px; }
 }
+
+/* ---------- Resume fonts (same files as the PDF; each loads only when used) ---------- */
+@font-face { font-family: "ra-source-serif-4"; src: url("/fonts/source-serif-4-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-source-serif-4"; src: url("/fonts/source-serif-4-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-source-serif-4"; src: url("/fonts/source-serif-4-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-source-serif-4"; src: url("/fonts/source-serif-4-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-merriweather"; src: url("/fonts/merriweather-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-merriweather"; src: url("/fonts/merriweather-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-merriweather"; src: url("/fonts/merriweather-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-merriweather"; src: url("/fonts/merriweather-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-lora"; src: url("/fonts/lora-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-lora"; src: url("/fonts/lora-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-lora"; src: url("/fonts/lora-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-lora"; src: url("/fonts/lora-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-eb-garamond"; src: url("/fonts/eb-garamond-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-eb-garamond"; src: url("/fonts/eb-garamond-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-eb-garamond"; src: url("/fonts/eb-garamond-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-eb-garamond"; src: url("/fonts/eb-garamond-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-inter"; src: url("/fonts/inter-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-inter"; src: url("/fonts/inter-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-inter"; src: url("/fonts/inter-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-inter"; src: url("/fonts/inter-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-lato"; src: url("/fonts/lato-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-lato"; src: url("/fonts/lato-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-lato"; src: url("/fonts/lato-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-lato"; src: url("/fonts/lato-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-source-sans-3"; src: url("/fonts/source-sans-3-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-source-sans-3"; src: url("/fonts/source-sans-3-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-source-sans-3"; src: url("/fonts/source-sans-3-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-source-sans-3"; src: url("/fonts/source-sans-3-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-roboto"; src: url("/fonts/roboto-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-roboto"; src: url("/fonts/roboto-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-roboto"; src: url("/fonts/roboto-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-roboto"; src: url("/fonts/roboto-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* ---------- Design settings in the edit view ---------- */
+.styled-paper {
+  font-family: var(--r-body-font), var(--font-paper);
+  font-size: var(--r-body-size);
+  line-height: var(--r-line);
+  position: relative;
+  container-type: inline-size;
+}
+.styled-paper::before {
+  content: "";
+  position: absolute;
+  inset: calc(100cqw * 9 / 210);
+  border: var(--r-border);
+  pointer-events: none;
+}
+.styled-paper .paper-name {
+  font-family: var(--r-head-font), var(--font-paper);
+  font-size: var(--r-name-size);
+  font-weight: var(--r-name-weight);
+  font-style: var(--r-name-style);
+  text-transform: var(--r-name-case);
+  line-height: 1.2;
+}
+.styled-paper .paper-contact { font-size: var(--r-body-size); }
+.styled-paper .paper-h {
+  font-family: var(--r-head-font), var(--font-paper);
+  font-size: var(--r-head-size);
+  font-weight: var(--r-head-weight);
+  font-style: var(--r-head-style);
+  text-transform: var(--r-head-case);
+  border-bottom: var(--r-divider);
+  margin: var(--r-gap) 0 0.7em;
+}
+.styled-paper .paper-muted, .styled-paper .paper-list { color: #3d4450; }
+.styled-paper .paper-list { list-style: none; padding-left: 0; }
+.styled-paper .paper-entry { margin-bottom: 0.55em; }
+.styled-paper .entry-title {
+  display: block;
+  font-family: var(--r-head-font), var(--font-paper);
+  font-size: var(--r-sub-size);
+  font-weight: var(--r-sub-weight);
+  font-style: var(--r-sub-style);
+  text-transform: var(--r-sub-case);
+  color: #1b1f27;
+}
+.styled-paper .entry-desc { display: inline; }
+.styled-paper .skill { font-size: calc(var(--r-body-size) * 0.95); }
+
+/* ---------- Page view: the exact PDF layout ---------- */
+.page-view { max-width: 720px; margin: 0 auto; display: grid; gap: 18px; }
+.page-sheet {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(21, 32, 51, 0.12), 0 12px 32px -8px rgba(21, 32, 51, 0.22);
+}
+.page-sheet text { font-kerning: none; font-variant-ligatures: none; white-space: pre; }
+.page-view-loading { max-width: 720px; margin: 0 auto; padding: 40px; text-align: center; color: var(--ink-3); font-size: 14px; }
+
+/* Shared segmented buttons */
+.view-switch, .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; flex-wrap: wrap; }
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-btn:hover { color: var(--ink); }
+.seg-btn.is-on { background: var(--ink); color: var(--on-ink); font-weight: 600; }
+
+/* ---------- Design panel ---------- */
+.design-panel {
+  position: fixed;
+  top: var(--header-offset, var(--header-h));
+  left: 0;
+  bottom: 0;
+  width: min(420px, 42vw);
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 18px 22px 28px;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+  box-shadow: 12px 0 32px -16px rgba(10, 15, 25, 0.35);
+  z-index: 46;
+}
+.design-head { display: flex; justify-content: space-between; align-items: center; }
+.design-sub { font-size: 13px; color: var(--ink-3); line-height: 1.5; margin: 6px 0 0; }
+.design-note { margin: 12px 0 0; }
+.design-group { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.design-group:last-child { border-bottom: none; }
+.design-h { font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+.design-h4 { font-size: 13px; font-weight: 700; color: var(--ink-2); margin: 14px 0 6px; }
+.design-row { display: grid; grid-template-columns: 112px 1fr auto; align-items: center; gap: 10px; margin-bottom: 10px; }
+.design-row .seg { grid-column: 2 / -1; justify-self: start; }
+.design-row.check-field { display: flex; }
+.design-label { font-size: 13px; color: var(--ink-2); }
+.design-value { font-size: 13px; font-weight: 600; min-width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+.design-row input[type=range] { width: 100%; accent-color: var(--ink); }
+.design-select { grid-column: 2 / -1; padding: 7px 10px; font-size: 15px; }
+.toggles { grid-column: 2 / -1; display: flex; gap: 6px; }
+.toggle {
+  min-width: 38px;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.toggle[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.preset {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.preset.is-on { border-color: var(--ink); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.preset-sample { font-size: 22px; font-weight: 700; color: var(--ink); line-height: 1; }
+.design-reset { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 13px; }
+.design-apply .design-sub { margin-top: 8px; }
+
+@media (max-width: 1024px) {
+  .design-panel {
+    top: auto;
+    right: 0;
+    width: auto;
+    max-height: 55vh;
+    border-right: none;
+    border-top: 1px solid var(--line);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -12px 32px -12px rgba(10, 15, 25, 0.4);
+  }
+}
+@media (max-width: 720px) {
+  .design-row { grid-template-columns: 96px 1fr auto; }
+  .length-bar { gap: 8px; }
+}
+
+/* Touch-sized segmented controls on phones */
+@media (pointer: coarse), (max-width: 720px) {
+  .seg-btn { min-height: 38px; padding: 6px 12px; }
+  .length-picker.is-compact .length-option span { padding: 10px 10px; }
+}

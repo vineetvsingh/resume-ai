@@ -618,6 +618,23 @@ Return ONLY a JSON object with no markdown or backticks:
     setLengthBusy(false)
   }
 
+  // Copies the open resume's design to every saved resume (login needed)
+  function applyStyleToAll(style) {
+    return new Promise((resolve) => {
+      requireLogin("Log in to copy this design to all your saved resumes.", async () => {
+        try {
+          const out = await api("/resumes/style", { method: "POST", body: { style } })
+          showSaveNote(`Design applied to ${out.updated} saved ${out.updated === 1 ? "resume" : "resumes"}.`, 6000)
+          if (dashboard) loadDashboard()
+        } catch (e) {
+          setBuildError(describeApiError(e, "Could not apply the design. Check that the backend is running."))
+        }
+        resolve()
+      })
+      if (!user) resolve()
+    })
+  }
+
   function undoAiChange() {
     if (!aiUndo) return
     setResume(aiUndo.resume)
@@ -874,6 +891,8 @@ Return ONLY a JSON object with no markdown or backticks:
             length={currentLength}
             onLengthChange={changeLength}
             lengthBusy={lengthBusy}
+            onApplyStyleToAll={applyStyleToAll}
+            canApplyAll={Boolean(user)}
           />
         </section>
       </main>

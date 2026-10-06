@@ -1,7 +1,10 @@
-import { useState, useMemo } from "react"
-import { Download } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Download, Palette, PencilLine, FileText } from "lucide-react"
 import { SortableList, SortableItem, ReorderTools } from "./Sortable"
-import { buildResumePdf } from "../pdf"
+import { buildResumePdf, layoutWithStyle } from "../pdf"
+import PageView from "./PageView"
+import DesignPanel from "./DesignPanel"
+import { getStyle, normalizeStyle, PRESETS, DEFAULT_STYLE, cssFamily, SECTION_SPACINGS } from "../resumeStyle"
 import LengthPicker from "./LengthPicker"
 import { getSectionOrder, isDefaultOrder, sectionTitle, sectionHasContent, withSettings, moveItem, DEFAULT_SECTION_ORDER, lengthLevel } from "../resumeLayout"
 
@@ -52,14 +55,94 @@ function EditableText({ value, onChange, multiline, block, placeholder }) {
   )
 }
 
-export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, generating, onResumeChange, saveNote, undo, length, onLengthChange, lengthBusy }) {
-  // Page count from the real PDF layout, so the warning matches what will be downloaded
-  const pageCount = useMemo(() => (resume ? buildResumePdf(resume).getNumberOfPages() : 0), [resume])
+// CSS variables that make the editable view follow the design settings
+function styleVars(style) {
+  const t = (role) => style.text[role]
+  const dividerWidth = style.divider.style === "double" ? Math.max(style.divider.width * 3, 2.25) : style.divider.width
+  const borderWidth = style.border.type === "double" ? Math.max(style.border.width * 3, 2.25) : style.border.width
+  return {
+    "--r-head-font": `"${cssFamily(style.headingFont)}"`,
+    "--r-body-font": `"${cssFamily(style.bodyFont)}"`,
+    "--r-name-size": `${style.sizes.name}pt`,
+    "--r-head-size": `${style.sizes.heading}pt`,
+    "--r-sub-size": `${style.sizes.subheading}pt`,
+    "--r-body-size": `${style.sizes.body}pt`,
+    "--r-name-weight": t("name").bold ? 700 : 400,
+    "--r-name-style": t("name").italic ? "italic" : "normal",
+    "--r-name-case": t("name").upper ? "uppercase" : "none",
+    "--r-head-weight": t("heading").bold ? 700 : 400,
+    "--r-head-style": t("heading").italic ? "italic" : "normal",
+    "--r-head-case": t("heading").upper ? "uppercase" : "none",
+    "--r-sub-weight": t("subheading").bold ? 700 : 400,
+    "--r-sub-style": t("subheading").italic ? "italic" : "normal",
+    "--r-sub-case": t("subheading").upper ? "uppercase" : "none",
+    "--r-line": style.lineSpacing,
+    "--r-gap": `${SECTION_SPACINGS.find((x) => x.id === style.sectionSpacing).mm}mm`,
+    "--r-divider": style.divider.show ? `${dividerWidth}pt ${style.divider.style} #1b1f27` : "0 none transparent",
+    "--r-border": style.border.type === "none" ? "0 none transparent" : `${borderWidth}pt ${style.border.type === "double" ? "double" : style.border.style} #1b1f27`
+  }
+}
+
+export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, generating, onResumeChange, saveNote, undo, length, onLengthChange, lengthBusy, onApplyStyleToAll, canApplyAll }) {
+  const [view, setView] = useState("edit")
+  const [designOpen, setDesignOpen] = useState(false)
+  const [layout, setLayout] = useState(null)
+  const [pageNote, setPageNote] = useState(null)
+  const [applying, setApplying] = useState(false)
+  const lastPages = useRef(0)
+  const designOpenRef = useRef(false)
+  const openDesign = (open) => {
+    designOpenRef.current = open
+    setDesignOpen(open)
+    // On narrow screens the panel is a bottom sheet, so bring the resume into the space above it
+    if (open && window.innerWidth <= 1024) {
+      requestAnimationFrame(() => {
+        const target = document.querySelector(".page-view:not([hidden]), .styled-paper:not([hidden])")
+        const header = document.querySelector(".header")?.offsetHeight || 0
+        if (target) window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - header - 8, behavior: "smooth" })
+      })
+    }
+  }
+
+  // Lay the resume out with the same engine as the PDF, for the page view and the page count
+  useEffect(() => {
+    if (!resume) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      layoutWithStyle(resume)
+        .then(({ layout }) => {
+          if (cancelled) return
+          setLayout(layout)
+          // While designing, warn when a change pushes the resume onto another page
+          const pages = layout.pages.length
+          if (designOpenRef.current && lastPages.current && pages > lastPages.current) {
+            setPageNote(`That change pushed your resume onto ${pages === 2 ? "a second page" : `${pages} pages`}.`)
+          } else if (pages <= 1) {
+            setPageNote(null)
+          }
+          lastPages.current = pages
+        })
+        .catch(() => { if (!cancelled) setLayout(null) })
+    }, 120)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [resume])
+
+  const pageCount = layout?.pages.length || 0
+
   const level = lengthLevel(length)
   const overflow = pageCount > level.pages
+  const style = getStyle(resume)
 
-  function handleDownload() {
-    buildResumePdf(resume).save(`${resume.name || "resume"}.pdf`)
+  async function handleDownload() {
+    const pdf = await buildResumePdf(resume)
+    pdf.save(`${resume.name || "resume"}.pdf`)
+  }
+
+  const setStyle = (next) => onResumeChange(withSettings(resume, { style: normalizeStyle(next) }))
+  async function applyToAll() {
+    setApplying(true)
+    await onApplyStyleToAll(style)
+    setApplying(false)
   }
 
   if (!resume) {
@@ -196,18 +279,19 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
       (p) => p?.name,
       (p, i) => (
         <>
-          <span className="paper-strong">
+          <span className="paper-strong entry-title">
             <EditableText
               value={p.name}
               onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, name: v }) })}
             />
           </span>
-          {": "}
-          <EditableText
-            value={p.desc}
-            multiline
-            onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, desc: v }) })}
-          />
+          <span className="entry-desc">
+            <EditableText
+              value={p.desc}
+              multiline
+              onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, desc: v }) })}
+            />
+          </span>
         </>
       ),
       { name: "New project", desc: "Description" }
@@ -218,23 +302,24 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
       (e) => [e?.role, e?.company].filter(Boolean).join(" at "),
       (e, i) => (
         <>
-          <span className="paper-strong">
+          <span className="paper-strong entry-title">
             <EditableText
               value={e.role}
               onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, role: v }) })}
             />
+            {" at "}
+            <EditableText
+              value={e.company}
+              onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, company: v }) })}
+            />
           </span>
-          {" at "}
-          <EditableText
-            value={e.company}
-            onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, company: v }) })}
-          />
-          {": "}
-          <EditableText
-            value={e.desc}
-            multiline
-            onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, desc: v }) })}
-          />
+          <span className="entry-desc">
+            <EditableText
+              value={e.desc}
+              multiline
+              onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, desc: v }) })}
+            />
+          </span>
         </>
       ),
       { role: "New role", company: "Company", desc: "Description" }
@@ -250,10 +335,21 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         </div>
       )}
       <div className="length-bar">
+        <div className="view-switch" role="radiogroup" aria-label="Preview">
+          <button type="button" role="radio" aria-checked={view === "edit"} className={`seg-btn${view === "edit" ? " is-on" : ""}`} onClick={() => setView("edit")}>
+            <PencilLine size={14} /> Edit
+          </button>
+          <button type="button" role="radio" aria-checked={view === "pages"} className={`seg-btn${view === "pages" ? " is-on" : ""}`} onClick={() => setView("pages")}>
+            <FileText size={14} /> Pages
+          </button>
+        </div>
+        <button type="button" onClick={() => openDesign(true)} className="btn btn-ghost btn-sm" aria-expanded={designOpen}>
+          <Palette size={14} /> Design
+        </button>
         <span className="length-bar-label">Length</span>
         <LengthPicker value={length} onChange={onLengthChange} disabled={lengthBusy} compact name="length-preview" />
         <span className={`page-count${overflow ? " is-over" : ""}`} role="status">
-          {lengthBusy ? "Rewriting…" : `${pageCount} ${pageCount === 1 ? "page" : "pages"}`}
+          {lengthBusy ? "Rewriting…" : pageCount ? `${pageCount} ${pageCount === 1 ? "page" : "pages"}` : ""}
         </span>
       </div>
       {overflow && !lengthBusy && (
@@ -264,7 +360,9 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
       )}
       <div className="desk-toolbar">
         <p className="desk-hint" role="status">
-          {saveNote || "Click any line to edit it. Drag a section's handle to move it."}
+          {saveNote || (view === "edit"
+            ? "Click any line to edit it. Drag a section's handle to move it."
+            : "Exactly what the PDF will look like. Switch to Edit to change the text.")}
           {!saveNote && !isDefaultOrder(order) && (
             <button onClick={resetOrder} className="link-btn reset-order">Reset order</button>
           )}
@@ -283,7 +381,23 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         </div>
       </div>
 
-      <article className="paper">
+      {view === "pages" && <PageView layout={layout} />}
+
+      {designOpen && (
+        <DesignPanel
+          style={style}
+          onChange={setStyle}
+          onPreset={(id) => setStyle(PRESETS.find((p) => p.id === id).style)}
+          onReset={() => setStyle(DEFAULT_STYLE)}
+          onApplyAll={applyToAll}
+          canApplyAll={canApplyAll}
+          applying={applying}
+          pageNote={pageNote}
+          onClose={() => openDesign(false)}
+        />
+      )}
+
+      <article className="paper styled-paper" style={styleVars(style)} hidden={view !== "edit"}>
         <h1 className="paper-name">
           <EditableText value={resume.name} onChange={(v) => set({ name: v })} />
         </h1>

@@ -582,6 +582,20 @@ async function findOwnedResume(id, userId) {
   return Resume.findOne({ _id: id, userId }).catch(() => null)
 }
 
+// Copies one design (FR-4 style settings) to every resume and version the user has saved
+app.post("/resumes/style", requireAuth, async (req, res) => {
+  const style = req.body?.style
+  if (!style || typeof style !== "object" || Array.isArray(style) || JSON.stringify(style).length > 4000) {
+    return res.status(400).json({ error: "A design is required" })
+  }
+  try {
+    const result = await Resume.updateMany({ userId: req.userId }, { $set: { "data.settings.style": style, updatedAt: new Date() } })
+    res.json({ updated: result.modifiedCount })
+  } catch (e) {
+    res.status(500).json({ error: "Failed to apply the design" })
+  }
+})
+
 app.post("/resumes/:id/versions", requireAuth, async (req, res) => {
   const { value, error } = cleanVersionFields(req.body)
   if (error) return res.status(400).json({ error })
