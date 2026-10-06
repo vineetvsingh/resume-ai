@@ -12,6 +12,9 @@ import Landing from "./components/Landing"
 import SidePanel from "./components/SidePanel"
 import ProfileSettings from "./components/ProfileSettings"
 import Roadmap from "./components/Roadmap"
+import VersionBar from "./components/VersionBar"
+import VersionDialog from "./components/VersionDialog"
+import ConfirmDialog from "./components/ConfirmDialog"
 import { api, getToken, setToken, BACKEND_URL } from "./auth"
 
 const TABS = ["Build", "ATS Score", "Suggestions"]
@@ -109,6 +112,7 @@ export default function App() {
     setDashboard(null)
     setView("home")
     setLoadedResumeId(null)
+    setResumeMeta(null)
   }
 
   // Returns a message for the user; on an expired session, also asks them to log in again
@@ -126,6 +130,15 @@ export default function App() {
 
   const [resume, setResume] = useState(null)
   const [loadedResumeId, setLoadedResumeId] = useState(null)
+  // Saved-resume details for the open resume: { name, parentId, label, target }
+  const [resumeMeta, setResumeMeta] = useState(null)
+  // The resume as it was before the last AI rewrite, so it can be undone in one step
+  const [aiUndo, setAiUndo] = useState(null)
+  const [tailoring, setTailoring] = useState(false)
+  // { mode: "create" | "edit", source } for the version dialog
+  const [versionDialog, setVersionDialog] = useState(null)
+  // { title, message, confirmLabel, onConfirm } for confirmations
+  const [confirm, setConfirm] = useState(null)
   const [buildLoading, setBuildLoading] = useState(false)
   const [scoreLoading, setScoreLoading] = useState(false)
   const [scoreResult, setScoreResult] = useState(null)
@@ -209,7 +222,7 @@ Return ONLY a JSON object with no markdown or backticks:
             foundKeywords: data.foundKeywords,
             missingKeywords: data.missingKeywords
           }
-        }).catch(() => {})
+        }).then(() => { if (dashboard) loadDashboard() }).catch(() => {})
       }
     } catch (e) {
       setScoreError("Something went wrong analyzing your resume. Please try again.")
@@ -262,9 +275,13 @@ Return ONLY a JSON object with no markdown or backticks:
         await updateResumeInDB(loadedResumeId, resume.name, resume)
       } else {
         const saved = await saveResumeToDB(resume.name, resume)
-        if (saved?._id) setLoadedResumeId(saved._id)
+        if (saved?._id) {
+          setLoadedResumeId(saved._id)
+          setResumeMeta({ name: saved.name, parentId: null, label: "", target: null })
+        }
       }
       showSaveNote()
+      if (dashboard) loadDashboard()
     } catch (e) {
       setBuildError(describeApiError(e, "Could not save. Check that the backend is running."))
     }
@@ -279,8 +296,12 @@ Return ONLY a JSON object with no markdown or backticks:
     requireLogin("Log in to save your resume. Only you will be able to see it.", async () => {
       try {
         const saved = await saveResumeToDB(resume.name, resume)
-        if (saved?._id) setLoadedResumeId(saved._id)
+        if (saved?._id) {
+          setLoadedResumeId(saved._id)
+          setResumeMeta({ name: saved.name, parentId: null, label: "", target: null })
+        }
         showSaveNote()
+        if (dashboard) loadDashboard()
       } catch (e) {
         setBuildError(describeApiError(e, "Could not save. Check that the backend is running."))
       }
@@ -305,6 +326,8 @@ Return ONLY a JSON object with no markdown or backticks:
   function handleClearResume() {
     setResume(null)
     setLoadedResumeId(null)
+    setResumeMeta(null)
+    setAiUndo(null)
     setScoreResult(null)
     setSuggestResult(null)
   }
@@ -443,14 +466,111 @@ Return ONLY a JSON object with no markdown or backticks:
     setDashboard((d) => (d ? { ...d, user: nextUser } : d))
   }
 
-  async function handleDeleteResume(id) {
+  async function deleteResume(id) {
     try {
       await deleteResumeFromDB(id)
-      if (loadedResumeId === id) setLoadedResumeId(null)
+      const removed = [id, ...(dashboard?.resumes || []).filter((r) => r.parentId === id).map((r) => r._id)]
+      if (removed.includes(loadedResumeId)) {
+        setLoadedResumeId(null)
+        setResumeMeta(null)
+      }
       loadDashboard()
     } catch (e) {
       setDashboardError(describeApiError(e, "Could not delete. Check that the backend is running."))
     }
+  }
+
+  const resumeTitle = (r) => r?.label || r?.name || "Untitled resume"
+
+  function handleDeleteResume(r) {
+    const versions = r.parentId ? 0 : (dashboard?.resumes || []).filter((v) => v.parentId === r._id).length
+    setConfirm({
+      title: r.parentId ? "Delete this version?" : "Delete this resume?",
+      message: versions
+        ? `"${resumeTitle(r)}" and its ${versions} ${versions === 1 ? "version" : "versions"} will be deleted, along with their ATS scores. This cannot be undone.`
+        : `"${resumeTitle(r)}" and its ATS scores will be deleted. This cannot be undone.`,
+      confirmLabel: versions ? `Delete resume and ${versions} ${versions === 1 ? "version" : "versions"}` : "Delete",
+      onConfirm: () => deleteResume(r._id)
+    })
+  }
+
+  async function handleDuplicateResume(r) {
+    try {
+      await api(`/resumes/${r._id}/duplicate`, { method: "POST" })
+      loadDashboard()
+    } catch (e) {
+      setDashboardError(describeApiError(e, "Could not duplicate. Check that the backend is running."))
+    }
+  }
+
+  // The saved resume a dialog acts on: from the dashboard, or the one open in the builder
+  function openedAsSaved() {
+    return loadedResumeId && resumeMeta ? { _id: loadedResumeId, ...resumeMeta, data: resume } : null
+  }
+
+  function masterTitleFor(r) {
+    if (!r?.parentId) return resumeTitle(r)
+    return resumeTitle((dashboard?.resumes || []).find((m) => m._id === r.parentId))
+  }
+
+  async function submitVersionDialog(fields, { tailorNow }) {
+    const { mode, source } = versionDialog
+    try {
+      if (mode === "create") {
+        // From the builder, the version starts from what is on screen, including unsaved edits
+        const fromBuilder = source._id === loadedResumeId
+        const created = await api(`/resumes/${source._id}/versions`, {
+          method: "POST",
+          body: { ...fields, ...(fromBuilder && resume ? { data: resume } : {}) }
+        })
+        setVersionDialog(null)
+        handleLoadResume(created)
+        loadDashboard()
+        if (tailorNow) tailorResume(created.data, fields.target.jobDescription)
+        else showSaveNote(`Created "${created.label}". Changes here never affect the original.`, 6000)
+      } else {
+        const updated = await api(`/resumes/${source._id}`, { method: "PATCH", body: fields })
+        setVersionDialog(null)
+        if (source._id === loadedResumeId) {
+          setResumeMeta({ name: updated.name, parentId: updated.parentId || null, label: updated.label || "", target: updated.target || null })
+        }
+        loadDashboard()
+      }
+      return null
+    } catch (e) {
+      return describeApiError(e, "Could not save. Check that the backend is running.") || "Log in again to continue."
+    }
+  }
+
+  // Rewrites the summary and reorders entries for the version's job, keeping every fact
+  async function tailorResume(base = resume, jobDescription = resumeMeta?.target?.jobDescription) {
+    if (!base || !jobDescription) return
+    setTailoring(true)
+    try {
+      const out = await api("/tailor", { method: "POST", body: { resume: base, jobDescription } })
+      const reorder = (list, order) => (list ? order.map((i) => list[i]).filter(Boolean) : list)
+      setAiUndo({ resume: base, label: "Tailored to this job" })
+      setResume({
+        ...base,
+        summary: out.summary,
+        skillsList: reorder(base.skillsList, out.skillsOrder),
+        projectsList: reorder(base.projectsList, out.projectsOrder),
+        experienceList: reorder(base.experienceList, out.experienceOrder)
+      })
+      showSaveNote(out.summaryKept
+        ? "Reordered your skills and projects for this job. Your summary was kept, since a rewrite would have added things not on your resume."
+        : "Tailored to this job using only what was already on your resume. Review it, then save.", 9000)
+    } catch (e) {
+      setBuildError(describeApiError(e, "Could not tailor. Check that the backend is running."))
+    }
+    setTailoring(false)
+  }
+
+  function undoAiChange() {
+    if (!aiUndo) return
+    setResume(aiUndo.resume)
+    setAiUndo(null)
+    showSaveNote("Undone. Your resume is back to how it was.")
   }
 
   const tabIcons = {
@@ -500,6 +620,9 @@ Return ONLY a JSON object with no markdown or backticks:
   function handleLoadResume(r) {
     setResume(r.data)
     setLoadedResumeId(r._id)
+    setResumeMeta({ name: r.name, parentId: r.parentId || null, label: r.label || "", target: r.target || null })
+    setAiUndo(null)
+    setScoreResult(null)
     setFormData({
       name: r.data.name || "",
       email: r.data.email || "",
@@ -622,6 +745,9 @@ Return ONLY a JSON object with no markdown or backticks:
             onContinue={() => openBuilder("Build")}
             onOpenResume={handleLoadResume}
             onDeleteResume={handleDeleteResume}
+            onDuplicateResume={handleDuplicateResume}
+            onNewVersion={(r) => setVersionDialog({ mode: "create", source: r })}
+            onEditDetails={(r) => setVersionDialog({ mode: "edit", source: r })}
             onNewResume={startNewResume}
             onCheckAts={() => openBuilder(resume ? "ATS Score" : "Build")}
             onEditProfile={openProfile}
@@ -644,7 +770,14 @@ Return ONLY a JSON object with no markdown or backticks:
               <ResumeForm formData={formData} setFormData={setFormData} onGenerate={handleGenerate} onClear={handleClearForm} loading={buildLoading} />
             )}
             {activeTab === "ATS Score" && (
-              <ATSScorer onScore={handleScore} loading={scoreLoading} result={scoreResult} onPlan={openRoadmap} />
+              <ATSScorer
+                key={loadedResumeId || "unsaved"}
+                initialJd={resumeMeta?.target?.jobDescription || ""}
+                onScore={handleScore}
+                loading={scoreLoading}
+                result={scoreResult}
+                onPlan={openRoadmap}
+              />
             )}
             {activeTab === "Suggestions" && (
               <Suggestions onSuggest={handleSuggest} loading={suggestLoading} result={suggestResult} />
@@ -655,6 +788,16 @@ Return ONLY a JSON object with no markdown or backticks:
         </section>
 
         <section className="desk" aria-label="Resume preview">
+          {resume && loadedResumeId && resumeMeta && (
+            <VersionBar
+              meta={resumeMeta}
+              masterTitle={masterTitleFor(resumeMeta)}
+              tailoring={tailoring}
+              onNewVersion={() => setVersionDialog({ mode: "create", source: openedAsSaved() })}
+              onEditDetails={() => setVersionDialog({ mode: "edit", source: openedAsSaved() })}
+              onTailor={() => tailorResume()}
+            />
+          )}
           <ResumePreview
             resume={resume}
             onScoreClick={() => setActiveTab("ATS Score")}
@@ -665,9 +808,31 @@ Return ONLY a JSON object with no markdown or backticks:
             generating={buildLoading}
             onResumeChange={setResume}
             saveNote={saveNote}
+            undo={aiUndo ? { label: aiUndo.label, onUndo: undoAiChange } : null}
           />
         </section>
       </main>
+      )}
+
+      {versionDialog && (
+        <VersionDialog
+          mode={versionDialog.mode}
+          isVersion={Boolean(versionDialog.source.parentId)}
+          masterTitle={`"${resumeTitle(versionDialog.source)}"`}
+          initial={versionDialog.mode === "edit" ? versionDialog.source : null}
+          onSubmit={submitVersionDialog}
+          onClose={() => setVersionDialog(null)}
+        />
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.title}
+          message={confirm.message}
+          confirmLabel={confirm.confirmLabel}
+          onConfirm={confirm.onConfirm}
+          onClose={() => setConfirm(null)}
+        />
       )}
 
       {authPrompt && (

@@ -1,5 +1,6 @@
 import { useState, useRef, useLayoutEffect } from "react"
-import { Plus, Check, Trash2, UserRound, FileText, Target, Route } from "lucide-react"
+import { Plus, Check, UserRound, FileText, Target, Route, GitBranch } from "lucide-react"
+import Menu from "./Menu"
 
 const fmtDate = (d, opts = { day: "numeric", month: "short" }) => new Date(d).toLocaleDateString(undefined, opts)
 
@@ -154,8 +155,7 @@ function SetupChecklist({ steps }) {
   )
 }
 
-export default function Dashboard({ data, error, currentResume, onContinue, onOpenResume, onDeleteResume, onNewResume, onCheckAts, onEditProfile, onPlan, onRetry }) {
-  const [confirmDelete, setConfirmDelete] = useState(null)
+export default function Dashboard({ data, error, currentResume, onContinue, onOpenResume, onDeleteResume, onDuplicateResume, onNewVersion, onEditDetails, onNewResume, onCheckAts, onEditProfile, onPlan, onRetry }) {
   const [showAllPlans, setShowAllPlans] = useState(false)
 
   if (error) {
@@ -172,6 +172,12 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
 
   const { user, stats, resumes, checks, commonGaps } = data
   const roadmaps = data.roadmaps || []
+  // Versions are grouped under their master; a version whose master is missing shows as a master
+  const ids = new Set(resumes.map((r) => r._id))
+  const masters = resumes.filter((r) => !r.parentId || !ids.has(r.parentId))
+  const versionsOf = (m) => resumes.filter((r) => r.parentId === m._id)
+  const versionCount = resumes.length - masters.length
+  const title = (r) => r.label || r.name || "Untitled resume"
   const roadmapFor = (keyword) => roadmaps.find((r) => r.keyword.toLowerCase() === keyword.toLowerCase())
   const latest = checks[0]
   const profile = user.profile || {}
@@ -237,44 +243,82 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
       <section className="shelf" aria-labelledby="shelf-title">
         <div className="shelf-head">
           <h2 id="shelf-title" className="dash-h">Your resumes</h2>
-          {resumes.length > 0 && <p className="dash-muted">{resumes.length} saved</p>}
+          {resumes.length > 0 && (
+            <p className="dash-muted">
+              {masters.length} {masters.length === 1 ? "resume" : "resumes"}
+              {versionCount > 0 && `, ${versionCount} ${versionCount === 1 ? "version" : "versions"}`}
+            </p>
+          )}
         </div>
         {resumes.length === 0 && (
           <p className="dash-muted shelf-empty-note">Resumes you save appear here as pages you can open with one click.</p>
         )}
         <ul className={resumes.length === 0 ? "shelf-grid shelf-grid-empty" : "shelf-grid"}>
-          {resumes.map((r) => {
-            const band = r.latestScore === null ? null : scoreBand(r.latestScore)
+          {masters.map((m) => {
+            const band = m.latestScore === null ? null : scoreBand(m.latestScore)
+            const versions = versionsOf(m)
             return (
-              <li key={r._id} className="shelf-item">
-                <button onClick={() => onOpenResume(r)} className="shelf-open" aria-label={`Open ${r.name}`}>
-                  <Thumbnail data={r.data} />
+              <li key={m._id} className={versions.length ? "shelf-item has-versions" : "shelf-item"}>
+                <div className="shelf-master">
+                <button onClick={() => onOpenResume(m)} className="shelf-open" aria-label={`Open ${title(m)}`}>
+                  <Thumbnail data={m.data} />
                 </button>
                 <div className="shelf-meta">
                   <div className="shelf-meta-main">
-                    <p className="shelf-name" title={r.name}>{r.name}</p>
+                    <p className="shelf-name" title={title(m)}>{title(m)}</p>
                     <p className="shelf-sub">
                       {band ? (
-                        <><span className="dash-dot" style={{ background: band.color }} aria-hidden="true"></span>{r.latestScore}% {band.label.toLowerCase()} match</>
+                        <><span className="dash-dot" style={{ background: band.color }} aria-hidden="true"></span>{m.latestScore}% {band.label.toLowerCase()} match</>
                       ) : (
-                        <>Edited {fmtDate(r.updatedAt)}</>
+                        <>Edited {fmtDate(m.updatedAt)}</>
                       )}
                     </p>
                   </div>
-                  {confirmDelete === r._id ? (
-                    <button
-                      onClick={() => { onDeleteResume(r._id); setConfirmDelete(null) }}
-                      onBlur={() => setConfirmDelete(null)}
-                      className="btn btn-danger btn-sm"
-                      autoFocus
-                    >
-                      Delete?
-                    </button>
-                  ) : (
-                    <button onClick={() => setConfirmDelete(r._id)} className="icon-btn icon-btn-sm" aria-label={`Delete ${r.name}`} title="Delete">
-                      <Trash2 size={15} strokeWidth={2} />
-                    </button>
+                  <Menu
+                    label={`Actions for ${title(m)}`}
+                    items={[
+                      { label: "Open", onSelect: () => onOpenResume(m) },
+                      { label: "New version", onSelect: () => onNewVersion(m) },
+                      { label: "Rename", onSelect: () => onEditDetails(m) },
+                      { label: "Duplicate", onSelect: () => onDuplicateResume(m) },
+                      { label: "Delete", danger: true, onSelect: () => onDeleteResume(m) }
+                    ]}
+                  />
+                </div>
+                </div>
+
+                <div className="versions">
+                  {versions.length > 0 && (
+                    <ul className="version-list" aria-label={`Versions of ${title(m)}`}>
+                      {versions.map((v) => {
+                        const vBand = v.latestScore === null ? null : scoreBand(v.latestScore)
+                        const job = [v.target?.role, v.target?.company].filter(Boolean).join(" at ")
+                        return (
+                          <li key={v._id} className="version-row">
+                            <button onClick={() => onOpenResume(v)} className="version-open">
+                              <span className="version-row-label"><GitBranch size={13} strokeWidth={2.2} aria-hidden="true" />{title(v)}</span>
+                              <span className="shelf-sub">
+                                {vBand && <><span className="dash-dot" style={{ background: vBand.color }} aria-hidden="true"></span>{v.latestScore}%&nbsp;&nbsp;</>}
+                                {job || `Edited ${fmtDate(v.updatedAt)}`}
+                              </span>
+                            </button>
+                            <Menu
+                              label={`Actions for ${title(v)}`}
+                              items={[
+                                { label: "Open", onSelect: () => onOpenResume(v) },
+                                { label: "Edit details", onSelect: () => onEditDetails(v) },
+                                { label: "Duplicate", onSelect: () => onDuplicateResume(v) },
+                                { label: "Delete", danger: true, onSelect: () => onDeleteResume(v) }
+                              ]}
+                            />
+                          </li>
+                        )
+                      })}
+                    </ul>
                   )}
+                  <button onClick={() => onNewVersion(m)} className="link-btn add-version">
+                    <Plus size={14} strokeWidth={2.2} /> New version for a job
+                  </button>
                 </div>
               </li>
             )

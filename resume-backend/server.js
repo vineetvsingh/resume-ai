@@ -58,6 +58,9 @@ const resumeSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   name: String,
   data: Object,
+  parentId: { type: String, default: null, index: true }, // set on versions; null on masters
+  label: { type: String, default: "" },
+  target: { type: Object, default: null }, // { company, role, jobDescription } for a version's job
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 })
@@ -220,18 +223,22 @@ app.post("/resumes", requireAuth, async (req, res) => {
 
 app.delete("/resumes/:id", requireAuth, async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Resume not found" })
     const deleted = await Resume.findOneAndDelete({ _id: req.params.id, userId: req.userId })
     if (!deleted) {
       return res.status(404).json({ error: "Resume not found" })
     }
+    const versions = deleted.parentId ? [] : await Resume.find({ userId: req.userId, parentId: deleted._id.toString() })
+    if (versions.length) await Resume.deleteMany({ _id: { $in: versions.map((v) => v._id) } })
+    const removedIds = [deleted, ...versions].map((r) => r._id.toString())
     await ScoreCheck.deleteMany({
       userId: req.userId,
       $or: [
-        { resumeId: deleted._id.toString() },
-        { resumeId: null, resumeName: deleted.name }
+        { resumeId: { $in: removedIds } },
+        ...(deleted.parentId ? [] : [{ resumeId: null, resumeName: deleted.name }])
       ]
     })
-    res.json({ success: true })
+    res.json({ success: true, deletedVersions: versions.length })
   } catch (e) {
     res.status(500).json({ error: "Failed to delete resume" })
   }
@@ -332,12 +339,12 @@ app.post("/scores", requireAuth, async (req, res) => {
   try {
     // Only link to a resume the user actually owns
     const ownedResume = typeof resumeId === "string" && mongoose.isValidObjectId(resumeId)
-      ? await Resume.exists({ _id: resumeId, userId: req.userId })
+      ? await Resume.findOne({ _id: resumeId, userId: req.userId }, { label: 1 })
       : null
     const check = await ScoreCheck.create({
       userId: req.userId,
       resumeId: ownedResume ? resumeId : null,
-      resumeName: typeof resumeName === "string" ? resumeName.slice(0, 120) : "",
+      resumeName: ownedResume?.label || (typeof resumeName === "string" ? resumeName.slice(0, 120) : ""),
       jobSnippet: typeof jobDescription === "string" ? jobDescription.replace(/\s+/g, " ").trim().slice(0, 160) : "",
       score: Math.round(numericScore),
       foundKeywords: toKeywordList(foundKeywords),
@@ -518,6 +525,194 @@ app.delete("/roadmaps/:id", requireAuth, async (req, res) => {
   res.json({ success: true })
 })
 
+// ---------- Resume versions ----------
+// A master resume (parentId null) can have versions tailored to individual jobs.
+
+const VERSION_LIMITS = { label: 80, company: 80, role: 80, jobDescription: 8000 }
+
+// Returns { value } with cleaned { label?, target? }, or { error }
+function cleanVersionFields(body) {
+  const value = {}
+  if (body?.label !== undefined) {
+    if (typeof body.label !== "string") return { error: "Label must be text" }
+    const label = body.label.trim()
+    if (label.length > VERSION_LIMITS.label) return { error: `Label must be at most ${VERSION_LIMITS.label} characters` }
+    value.label = label
+  }
+  if (body?.target !== undefined && body.target !== null) {
+    if (typeof body.target !== "object") return { error: "Target must be an object" }
+    const target = {}
+    for (const key of ["company", "role", "jobDescription"]) {
+      const raw = body.target[key]
+      if (raw === undefined || raw === null) { target[key] = ""; continue }
+      if (typeof raw !== "string") return { error: `${key} must be text` }
+      if (raw.trim().length > VERSION_LIMITS[key]) {
+        return { error: `${key === "jobDescription" ? "Job description" : key[0].toUpperCase() + key.slice(1)} must be at most ${VERSION_LIMITS[key]} characters` }
+      }
+      target[key] = raw.trim()
+    }
+    value.target = target
+  }
+  return { value }
+}
+
+async function findOwnedResume(id, userId) {
+  if (!mongoose.isValidObjectId(id)) return null
+  return Resume.findOne({ _id: id, userId }).catch(() => null)
+}
+
+app.post("/resumes/:id/versions", requireAuth, async (req, res) => {
+  const { value, error } = cleanVersionFields(req.body)
+  if (error) return res.status(400).json({ error })
+  if (req.body?.data !== undefined && (typeof req.body.data !== "object" || req.body.data === null)) {
+    return res.status(400).json({ error: "Data must be an object" })
+  }
+  try {
+    const source = await findOwnedResume(req.params.id, req.userId)
+    if (!source) return res.status(404).json({ error: "Resume not found" })
+    // Versions always hang off the master, even when made from another version
+    const masterId = source.parentId || source._id.toString()
+    const count = await Resume.countDocuments({ userId: req.userId, parentId: masterId })
+    const version = await Resume.create({
+      userId: req.userId,
+      name: source.name,
+      data: req.body.data || source.data,
+      parentId: masterId,
+      label: value.label || `Version ${count + 1}`,
+      target: value.target || null
+    })
+    res.json(version)
+  } catch (e) {
+    res.status(500).json({ error: "Failed to create version" })
+  }
+})
+
+app.patch("/resumes/:id", requireAuth, async (req, res) => {
+  const { value, error } = cleanVersionFields(req.body)
+  if (error) return res.status(400).json({ error })
+  if (!Object.keys(value).length) return res.status(400).json({ error: "Nothing to update" })
+  try {
+    const resume = await findOwnedResume(req.params.id, req.userId)
+    if (!resume) return res.status(404).json({ error: "Resume not found" })
+    if (value.label === "" && resume.parentId) return res.status(400).json({ error: "A version needs a label" })
+    Object.assign(resume, value, { updatedAt: new Date() })
+    await resume.save()
+    res.json(resume)
+  } catch (e) {
+    res.status(500).json({ error: "Failed to update resume" })
+  }
+})
+
+app.post("/resumes/:id/duplicate", requireAuth, async (req, res) => {
+  try {
+    const source = await findOwnedResume(req.params.id, req.userId)
+    if (!source) return res.status(404).json({ error: "Resume not found" })
+    const title = source.label || source.name || "resume"
+    const copy = await Resume.create({
+      userId: req.userId,
+      name: source.name,
+      data: source.data,
+      parentId: source.parentId || null,
+      label: `Copy of ${title}`.slice(0, VERSION_LIMITS.label),
+      target: source.target || null
+    })
+    res.json(copy)
+  } catch (e) {
+    res.status(500).json({ error: "Failed to duplicate resume" })
+  }
+})
+
+// Rewrites the summary and reorders existing entries for one job. Never adds facts.
+const NUMBER_PATTERN = /\d+(?:[.,]\d+)?/g
+
+function isPermutation(order, length) {
+  return Array.isArray(order) && order.length === length &&
+    new Set(order).size === length && order.every((i) => Number.isInteger(i) && i >= 0 && i < length)
+}
+
+// Lowercase words with hyphens and plurals smoothed out, for "does this text mention that term" checks
+function normalizeTerms(text) {
+  return " " + String(text).toLowerCase().replace(/[-_/]/g, " ").replace(/[^a-z0-9+#. ]+/g, " ")
+    .split(/\s+/).filter(Boolean).map((w) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w)).join(" ") + " "
+}
+
+// Short skill-like phrases from a job description, e.g. "sql", "object oriented programming"
+function jobTerms(jd) {
+  return [...new Set(String(jd).split(/[,.;:\n()]|\band\b|\bor\b|\bwith\b/i)
+    .map((t) => t.trim())
+    .filter((t) => t && !/\bat\b/i.test(t) && t.split(/\s+/).length <= 4 && t.length > 1)
+    .map((t) => normalizeTerms(t))
+    .filter((t) => t.trim().length > 1))]
+}
+
+app.post("/tailor", requireAuth, async (req, res) => {
+  const resume = req.body?.resume
+  const jobDescription = typeof req.body?.jobDescription === "string" ? req.body.jobDescription.trim().slice(0, 8000) : ""
+  if (!resume || typeof resume !== "object") return res.status(400).json({ error: "Resume is required" })
+  if (!jobDescription) return res.status(400).json({ error: "Add a job description to tailor to" })
+
+  const skills = Array.isArray(resume.skillsList) ? resume.skillsList.map(String) : []
+  const projects = Array.isArray(resume.projectsList) ? resume.projectsList : []
+  const experience = Array.isArray(resume.experienceList) ? resume.experienceList : []
+  const facts = JSON.stringify({ summary: resume.summary || "", education: resume.education || "", skills, projects, experience })
+  const knownNumbers = new Set(facts.match(NUMBER_PATTERN) || [])
+
+  const prompt = `Tailor this student's resume to the job description, using ONLY facts already in the resume.
+
+Resume facts (JSON): ${facts}
+
+Job description: ${jobDescription}
+
+Rules:
+- Rewrite the summary in 30 to 50 words so it leads with the experience and skills most relevant to this job.
+- Use only skills, projects, employers, numbers and achievements that already appear in the resume facts. Do not add any new skill, tool, employer, number or achievement, even if the job asks for it.
+- Reorder skills, projects and experience by relevance to the job, most relevant first. Return each order as the list of original indexes (0-based), including every index exactly once.
+
+Return ONLY a JSON object:
+{"summary":"","skillsOrder":[${skills.map((_, i) => i).join(",")}],"projectsOrder":[${projects.map((_, i) => i).join(",")}],"experienceOrder":[${experience.map((_, i) => i).join(",")}]}`
+
+  // Terms the job asks for that are not on the resume: the summary must not claim them
+  const factsNorm = normalizeTerms(facts)
+  const missingTerms = jobTerms(jobDescription).filter((t) => !factsNorm.includes(t))
+  const jdNorm = normalizeTerms(jobDescription)
+  const identity = (list) => list.map((_, i) => i)
+
+  // Skills the job names explicitly go first, keeping the AI's order otherwise
+  function skillsFirstForJob(order) {
+    const named = order.filter((i) => jdNorm.includes(normalizeTerms(skills[i])))
+    return [...named, ...order.filter((i) => !named.includes(i))]
+  }
+
+  let feedback = ""
+  let lastOrders = null
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const out = await askGroqForJSON("You tailor resumes without inventing facts. Return only valid JSON.", prompt + feedback, 1500)
+      lastOrders = {
+        skillsOrder: skillsFirstForJob(isPermutation(out.skillsOrder, skills.length) ? out.skillsOrder : identity(skills)),
+        projectsOrder: isPermutation(out.projectsOrder, projects.length) ? out.projectsOrder : identity(projects),
+        experienceOrder: isPermutation(out.experienceOrder, experience.length) ? out.experienceOrder : identity(experience)
+      }
+      const summary = typeof out.summary === "string" ? out.summary.trim().slice(0, 600) : ""
+      if (!summary) throw new Error("No summary")
+      const inventedNumbers = (summary.match(NUMBER_PATTERN) || []).filter((n) => !knownNumbers.has(n))
+      const summaryNorm = normalizeTerms(summary)
+      const inventedTerms = missingTerms.filter((t) => summaryNorm.includes(t))
+      if (inventedNumbers.length || inventedTerms.length) {
+        const bad = [...inventedNumbers, ...inventedTerms]
+        feedback = `\n\nYour previous summary mentioned ${bad.join(", ")}, which the resume does not contain. Do not mention them.`
+        throw new Error(`Summary added facts: ${bad.join(", ")}`)
+      }
+      return res.json({ summary, summaryKept: false, ...lastOrders })
+    } catch (e) {
+      console.error(`Tailoring attempt ${attempt} failed:`, e.message)
+    }
+  }
+  // The AI kept adding facts: keep the user's own summary and apply only the reordering
+  if (lastOrders) return res.json({ summary: resume.summary || "", summaryKept: true, ...lastOrders })
+  res.status(502).json({ error: "The AI could not tailor this resume right now. Try again in a moment." })
+})
+
 app.get("/dashboard", requireAuth, async (req, res) => {
   try {
     const [user, resumes, allChecks, allRoadmaps] = await Promise.all([
@@ -583,6 +778,9 @@ app.get("/dashboard", requireAuth, async (req, res) => {
         _id: r._id,
         name: r.name,
         data: r.data,
+        parentId: r.parentId || null,
+        label: r.label || "",
+        target: r.target || null,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt || r.createdAt,
         latestScore: latestScoreByResume[r._id.toString()] ?? null

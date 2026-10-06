@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { LayoutDashboard, Sparkles, Target, PenLine, FileText, LogOut, LogIn, UserRound } from "lucide-react"
+import { LayoutDashboard, Sparkles, Target, PenLine, FileText, LogOut, LogIn, UserRound, GitBranch } from "lucide-react"
 
 const BUILDER_LINKS = [
   { tab: "Build", icon: Sparkles },
@@ -59,16 +59,27 @@ export default function SidePanel({ open, onClose, view, activeTab, user, resume
             <p className="panel-muted">Nothing saved yet.</p>
           ) : (
             <ul className="panel-list">
-              {resumes.map((r) => (
-                <li key={r._id}>
+              {resumes.filter((r) => !r.parentId || !resumes.some((m) => m._id === r.parentId)).map((m) => (
+                <li key={m._id}>
                   <button
                     className="panel-link panel-resume"
-                    aria-current={loadedResumeId === r._id ? "true" : undefined}
-                    onClick={go(() => onOpenResume(r))}
+                    aria-current={loadedResumeId === m._id ? "true" : undefined}
+                    onClick={go(() => onOpenResume(m))}
                   >
                     <FileText size={16} strokeWidth={2} />
-                    <span>{r.name}</span>
+                    <span>{m.label || m.name}</span>
                   </button>
+                  {resumes.filter((v) => v.parentId === m._id).map((v) => (
+                    <button
+                      key={v._id}
+                      className="panel-link panel-resume panel-version"
+                      aria-current={loadedResumeId === v._id ? "true" : undefined}
+                      onClick={go(() => onOpenResume(v))}
+                    >
+                      <GitBranch size={14} strokeWidth={2} />
+                      <span>{v.label}</span>
+                    </button>
+                  ))}
                 </li>
               ))}
             </ul>

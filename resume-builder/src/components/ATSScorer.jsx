@@ -6,14 +6,17 @@ function verdict(score) {
   return { text: "Weak match", color: "var(--pen)" }
 }
 
-export default function ATSScorer({ onScore, loading, result, onPlan }) {
-  const [jd, setJd] = useState("")
+export default function ATSScorer({ onScore, loading, result, onPlan, initialJd = "" }) {
+  const [jd, setJd] = useState(initialJd)
   const v = result ? verdict(result.score) : null
 
   return (
     <div>
       <label className="field">
-        <span className="field-label">Job description</span>
+        <span className="field-label">
+          Job description
+          {initialJd && jd === initialJd && <span className="field-hint"> (saved with this version)</span>}
+        </span>
         <textarea
           className="input input-tall"
           placeholder="Paste the full job description here"

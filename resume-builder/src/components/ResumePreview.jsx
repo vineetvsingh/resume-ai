@@ -49,7 +49,7 @@ function EditableText({ value, onChange, multiline, block, placeholder }) {
   )
 }
 
-export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, generating, onResumeChange, saveNote }) {
+export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSaveAsNewClick, onClearClick, isLoaded, generating, onResumeChange, saveNote, undo }) {
   function handleDownload() {
     const pdf = new jsPDF("p", "mm", "a4")
     const pageWidth = 210
@@ -192,6 +192,12 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
 
   return (
     <div>
+      {undo && (
+        <div className="undo-bar" role="status">
+          <span>{undo.label}.</span>
+          <button onClick={undo.onUndo} className="link-btn">Undo</button>
+        </div>
+      )}
       <div className="desk-toolbar">
         <p className="desk-hint" role="status">{saveNote || "Click any line to edit it"}</p>
         <div className="desk-actions">
