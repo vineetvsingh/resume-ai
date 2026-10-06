@@ -1502,3 +1502,80 @@ textarea.editable-input { min-height: 64px; resize: vertical; }
 @media (max-width: 720px) {
   .shelf-item.has-versions { grid-template-columns: 120px minmax(0, 1fr); gap: 12px; }
 }
+
+/* ---------- Section ordering ---------- */
+.paper-section, .paper-entry { position: relative; }
+.paper .paper-h { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.reorder-tools {
+  display: inline-flex;
+  gap: 2px;
+  font-family: var(--font-ui);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.sortable:hover > .paper-h .reorder-tools,
+.sortable:focus-within > .paper-h .reorder-tools,
+.paper-entry:hover > .reorder-tools,
+.paper-entry:focus-within > .reorder-tools { opacity: 1; }
+.paper-entry > .reorder-tools { margin-left: 6px; vertical-align: middle; }
+.reorder-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
+}
+.reorder-btn:hover:not(:disabled) { color: #1b1f27; background: #eef0f3; }
+.reorder-btn:focus-visible { outline: 2px solid #1b1f27; outline-offset: 1px; }
+.reorder-btn:disabled { opacity: 0.3; cursor: default; }
+.drag-handle { cursor: grab; touch-action: manipulation; }
+.drag-handle:active { cursor: grabbing; }
+.paper-entry .reorder-btn { width: 22px; height: 22px; }
+
+/* While dragging: the original fades, a line marks where it will land */
+.sortable.is-dragging { opacity: 0.35; }
+.sortable[data-drop]::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  height: 3px;
+  border-radius: 2px;
+  background: #e0b400;
+  box-shadow: 0 0 0 1px #ffffff;
+  z-index: 2;
+}
+.sortable[data-drop="before"]::before { top: -6px; }
+.sortable[data-drop="after"]::before { bottom: -6px; }
+.paper-section.sortable[data-drop="before"]::before { top: 8px; }
+.drag-ghost {
+  display: inline-block;
+  padding: 6px 12px;
+  font-family: var(--font-paper);
+  font-size: 15px;
+  font-weight: 700;
+  color: #1b1f27;
+  background: #ffffff;
+  border: 1px solid #d5d9e0;
+  border-radius: 6px;
+  box-shadow: 0 10px 24px -8px rgba(21, 32, 51, 0.45);
+  cursor: grabbing;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reset-order { margin-left: 10px; font-size: 13px; }
+
+/* Touch screens have no hover, so the controls stay visible */
+@media (pointer: coarse), (max-width: 720px) {
+  .reorder-tools { opacity: 1; }
+  .reorder-btn { width: 32px; height: 32px; }
+  .paper-entry .reorder-btn { width: 30px; height: 30px; }
+  .paper-entry > .reorder-tools { display: flex; margin: 4px 0 0; }
+}

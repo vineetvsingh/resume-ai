@@ -16,6 +16,7 @@ import VersionBar from "./components/VersionBar"
 import VersionDialog from "./components/VersionDialog"
 import ConfirmDialog from "./components/ConfirmDialog"
 import { api, getToken, setToken, BACKEND_URL } from "./auth"
+import { contentOnly } from "./resumeLayout"
 
 const TABS = ["Build", "ATS Score", "Suggestions"]
 
@@ -177,7 +178,8 @@ Return ONLY a JSON object with no markdown or backticks:
           throw new Error("Could not parse AI response")
         }
       }
-      setResume(data)
+      // Regenerating keeps the layout the user already chose
+      setResume(resume?.settings ? { ...data, settings: resume.settings } : data)
       revealPreview()
     } catch (e) {
       setBuildError("Something went wrong generating your resume. Please try again.")
@@ -191,7 +193,7 @@ Return ONLY a JSON object with no markdown or backticks:
     setScoreError(null)
     try {
       const prompt = `Compare this resume against the job description.
-Resume: ${JSON.stringify(resume)}
+Resume: ${JSON.stringify(contentOnly(resume))}
 Job Description: ${jd}
 
 Return ONLY a JSON object with no markdown or backticks:
@@ -238,7 +240,7 @@ Return ONLY a JSON object with no markdown or backticks:
     setSuggestLoading(true)
     try {
       const prompt = `Give specific resume improvements for this student.
-Resume: ${JSON.stringify(resume)}
+Resume: ${JSON.stringify(contentOnly(resume))}
 Target: ${context || "general software engineering roles"}
 
 Return ONLY a JSON object with no markdown or backticks:

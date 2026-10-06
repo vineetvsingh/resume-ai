@@ -1,6 +1,8 @@
 import { useState } from "react"
 import jsPDF from "jspdf"
 import { Download } from "lucide-react"
+import { SortableList, SortableItem, ReorderTools } from "./Sortable"
+import { getSectionOrder, isDefaultOrder, sectionTitle, sectionHasContent, withSettings, moveItem, DEFAULT_SECTION_ORDER } from "../resumeLayout"
 
 function updateArrayItem(array, index, newItem) {
   return array.map((item, i) => i === index ? newItem : item)
@@ -92,44 +94,17 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
     pdf.text(contact, margin, y)
     y += 8
 
-    if (resume.summary) {
-      addSectionHeader("Summary")
-      pdf.setFontSize(10)
-      pdf.setTextColor(80, 80, 80)
-      pdf.setFont("helvetica", "normal")
-      const summaryLines = pdf.splitTextToSize(resume.summary, contentWidth)
-      pdf.text(summaryLines, margin, y)
-      y += summaryLines.length * 5 + 2
-    }
-
-    addSectionHeader("Education")
-    pdf.setFontSize(10)
-    pdf.setTextColor(30, 30, 30)
-    pdf.setFont("helvetica", "normal")
-    pdf.text(resume.education || "", margin, y)
-    y += 8
-
-    if (resume.skillsList?.length > 0) {
-      addSectionHeader("Skills")
-      pdf.setFontSize(10)
-      pdf.setTextColor(30, 30, 30)
-      pdf.setFont("helvetica", "normal")
-      const skillsText = (resume.skillsList || []).join("  ·  ")
-      const skillLines = pdf.splitTextToSize(skillsText, contentWidth)
-      pdf.text(skillLines, margin, y)
-      y += skillLines.length * 5 + 2
-    }
-
-    if (resume.projectsList?.length > 0) {
-      addSectionHeader("Projects")
-      resume.projectsList.forEach((p) => {
+    const drawEntries = (title, entries, heading) => {
+      if (!entries?.length) return
+      addSectionHeader(title)
+      entries.forEach((entry) => {
         pdf.setFontSize(10)
         pdf.setFont("helvetica", "normal")
-        const descLines = pdf.splitTextToSize(p.desc || "", contentWidth - 6)
+        const descLines = pdf.splitTextToSize(entry.desc || "", contentWidth - 6)
         checkPageBreak(5 + descLines.length * 5 + 2)
         pdf.setTextColor(17, 17, 17)
         pdf.setFont("helvetica", "bold")
-        pdf.text(`• ${p.name || ""}`, margin, y)
+        pdf.text(`• ${heading(entry)}`, margin, y)
         y += 5
         pdf.setFont("helvetica", "normal")
         pdf.setTextColor(80, 80, 80)
@@ -138,23 +113,40 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
       })
     }
 
-    if (resume.experienceList?.length > 0) {
-      addSectionHeader("Experience")
-      resume.experienceList.forEach((e) => {
+    const drawSection = {
+      summary: () => {
+        if (!resume.summary) return
+        addSectionHeader("Summary")
         pdf.setFontSize(10)
-        pdf.setFont("helvetica", "normal")
-        const descLines = pdf.splitTextToSize(e.desc || "", contentWidth - 6)
-        checkPageBreak(5 + descLines.length * 5 + 2)
-        pdf.setTextColor(17, 17, 17)
-        pdf.setFont("helvetica", "bold")
-        pdf.text(`• ${e.role || ""} at ${e.company || ""}`, margin, y)
-        y += 5
-        pdf.setFont("helvetica", "normal")
         pdf.setTextColor(80, 80, 80)
-        pdf.text(descLines, margin + 3, y)
-        y += descLines.length * 5 + 2
-      })
+        pdf.setFont("helvetica", "normal")
+        const summaryLines = pdf.splitTextToSize(resume.summary, contentWidth)
+        pdf.text(summaryLines, margin, y)
+        y += summaryLines.length * 5 + 2
+      },
+      education: () => {
+        addSectionHeader("Education")
+        pdf.setFontSize(10)
+        pdf.setTextColor(30, 30, 30)
+        pdf.setFont("helvetica", "normal")
+        pdf.text(resume.education || "", margin, y)
+        y += 8
+      },
+      skills: () => {
+        if (!resume.skillsList?.length) return
+        addSectionHeader("Skills")
+        pdf.setFontSize(10)
+        pdf.setTextColor(30, 30, 30)
+        pdf.setFont("helvetica", "normal")
+        const skillLines = pdf.splitTextToSize(resume.skillsList.join("  ·  "), contentWidth)
+        pdf.text(skillLines, margin, y)
+        y += skillLines.length * 5 + 2
+      },
+      projects: () => drawEntries("Projects", resume.projectsList, (p) => p.name || ""),
+      experience: () => drawEntries("Experience", resume.experienceList, (e) => `${e.role || ""} at ${e.company || ""}`)
     }
+
+    getSectionOrder(resume).forEach((id) => drawSection[id]())
 
     pdf.save(`${resume.name || "resume"}.pdf`)
   }
@@ -190,6 +182,154 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
 
   const set = (patch) => onResumeChange({ ...resume, ...patch })
 
+  const order = getSectionOrder(resume)
+  const visibleSections = order.filter((id) => sectionHasContent(resume, id))
+  // Moving among visible sections; hidden ones (an empty Summary) keep their saved place
+  const moveSection = (from, to) => {
+    const moved = moveItem(visibleSections, from, to)
+    let k = 0
+    const next = order.map((id) => (visibleSections.includes(id) ? moved[k++] : id))
+    onResumeChange(withSettings(resume, { sectionOrder: next }))
+  }
+  const resetOrder = () => onResumeChange(withSettings(resume, { sectionOrder: DEFAULT_SECTION_ORDER }))
+
+  // Projects and experience entries can be reordered the same way
+  const entryList = (key, label, entryName, renderEntry, emptyEntry) => {
+    const list = resume[key] || []
+    const ids = list.map((_, i) => `${key}-${i}`)
+    const move = (from, to) => set({ [key]: moveItem(list, from, to) })
+    return (
+      <>
+        <ul className="paper-list">
+          <SortableList
+            ids={ids}
+            onMove={move}
+            getName={(id) => entryName(list[ids.indexOf(id)]) || label}
+            renderOverlay={(id) => entryName(list[ids.indexOf(id)]) || label}
+          >
+            {(id, i, drop) => (
+              <SortableItem key={id} id={id} as="li" className="paper-entry" drop={drop}>
+                {({ handle }) => (
+                  <>
+                    {renderEntry(list[i], i)}
+                    <button
+                      onClick={() => set({ [key]: removeArrayItem(list, i) })}
+                      className="remove-x"
+                      aria-label={`Remove ${entryName(list[i]) || label}`}
+                      title={`Remove ${label}`}
+                    >×</button>
+                    {list.length > 1 && (
+                      <ReorderTools
+                        handle={handle}
+                        name={entryName(list[i]) || label}
+                        index={i}
+                        count={list.length}
+                        onMove={move}
+                        size={13}
+                      />
+                    )}
+                  </>
+                )}
+              </SortableItem>
+            )}
+          </SortableList>
+        </ul>
+        <button onClick={() => set({ [key]: addArrayItem(list, emptyEntry) })} className="add-line">
+          + Add {label}
+        </button>
+      </>
+    )
+  }
+
+  const renderSection = {
+    summary: () => (
+      <p className="paper-muted">
+        <EditableText value={resume.summary} multiline block onChange={(v) => set({ summary: v })} />
+      </p>
+    ),
+    education: () => (
+      <p>
+        <EditableText value={resume.education} onChange={(v) => set({ education: v })} />
+      </p>
+    ),
+    skills: () => (
+      <div className="skills">
+        {(resume.skillsList || []).map((skill, i) => (
+          <span key={i} className="skill">
+            <EditableText
+              value={skill}
+              onChange={(v) => {
+                if (!v.trim()) {
+                  set({ skillsList: removeArrayItem(resume.skillsList, i) })
+                } else {
+                  set({ skillsList: updateArrayItem(resume.skillsList, i, v) })
+                }
+              }}
+            />
+            <button
+              onClick={() => set({ skillsList: removeArrayItem(resume.skillsList, i) })}
+              className="remove-x"
+              aria-label={`Remove ${skill}`}
+              title="Remove skill"
+            >×</button>
+          </span>
+        ))}
+        <button onClick={() => set({ skillsList: addArrayItem(resume.skillsList, "New skill") })} className="add-line">
+          + Add skill
+        </button>
+      </div>
+    ),
+    projects: () => entryList(
+      "projectsList",
+      "project",
+      (p) => p?.name,
+      (p, i) => (
+        <>
+          <span className="paper-strong">
+            <EditableText
+              value={p.name}
+              onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, name: v }) })}
+            />
+          </span>
+          {": "}
+          <EditableText
+            value={p.desc}
+            multiline
+            onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, desc: v }) })}
+          />
+        </>
+      ),
+      { name: "New project", desc: "Description" }
+    ),
+    experience: () => entryList(
+      "experienceList",
+      "experience",
+      (e) => [e?.role, e?.company].filter(Boolean).join(" at "),
+      (e, i) => (
+        <>
+          <span className="paper-strong">
+            <EditableText
+              value={e.role}
+              onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, role: v }) })}
+            />
+          </span>
+          {" at "}
+          <EditableText
+            value={e.company}
+            onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, company: v }) })}
+          />
+          {": "}
+          <EditableText
+            value={e.desc}
+            multiline
+            onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, desc: v }) })}
+          />
+        </>
+      ),
+      { role: "New role", company: "Company", desc: "Description" }
+    )
+  }
+
   return (
     <div>
       {undo && (
@@ -199,7 +339,12 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         </div>
       )}
       <div className="desk-toolbar">
-        <p className="desk-hint" role="status">{saveNote || "Click any line to edit it"}</p>
+        <p className="desk-hint" role="status">
+          {saveNote || "Click any line to edit it. Drag a section's handle to move it."}
+          {!saveNote && !isDefaultOrder(order) && (
+            <button onClick={resetOrder} className="link-btn reset-order">Reset order</button>
+          )}
+        </p>
         <div className="desk-actions">
           <button onClick={onScoreClick} className="btn btn-ghost btn-sm">Check ATS score</button>
           <button onClick={onSaveClick} className="btn btn-ghost btn-sm">{isLoaded ? "Save changes" : "Save resume"}</button>
@@ -224,115 +369,32 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
           <EditableText value={resume.phone} onChange={(v) => set({ phone: v })} placeholder="Phone" />
         </p>
 
-        {resume.summary && (
-          <>
-            <h2 className="paper-h">Summary</h2>
-            <p className="paper-muted">
-              <EditableText value={resume.summary} multiline block onChange={(v) => set({ summary: v })} />
-            </p>
-          </>
-        )}
-
-        <h2 className="paper-h">Education</h2>
-        <p>
-          <EditableText value={resume.education} onChange={(v) => set({ education: v })} />
-        </p>
-
-        <h2 className="paper-h">Skills</h2>
-        <div className="skills">
-          {(resume.skillsList || []).map((skill, i) => (
-            <span key={i} className="skill">
-              <EditableText
-                value={skill}
-                onChange={(v) => {
-                  if (!v.trim()) {
-                    set({ skillsList: removeArrayItem(resume.skillsList, i) })
-                  } else {
-                    set({ skillsList: updateArrayItem(resume.skillsList, i, v) })
-                  }
-                }}
-              />
-              <button
-                onClick={() => set({ skillsList: removeArrayItem(resume.skillsList, i) })}
-                className="remove-x"
-                aria-label={`Remove ${skill}`}
-                title="Remove skill"
-              >×</button>
-            </span>
-          ))}
-          <button onClick={() => set({ skillsList: addArrayItem(resume.skillsList, "New skill") })} className="add-line">
-            + Add skill
-          </button>
-        </div>
-
-        <h2 className="paper-h">Projects</h2>
-        <ul className="paper-list">
-          {(resume.projectsList || []).map((p, i) => (
-            <li key={i}>
-              <span className="paper-strong">
-                <EditableText
-                  value={p.name}
-                  onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, name: v }) })}
-                />
-              </span>
-              {": "}
-              <EditableText
-                value={p.desc}
-                multiline
-                onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, desc: v }) })}
-              />
-              <button
-                onClick={() => set({ projectsList: removeArrayItem(resume.projectsList, i) })}
-                className="remove-x"
-                aria-label="Remove project"
-                title="Remove project"
-              >×</button>
-            </li>
-          ))}
-        </ul>
-        <button
-          onClick={() => set({ projectsList: addArrayItem(resume.projectsList, { name: "New project", desc: "Description" }) })}
-          className="add-line"
+        <SortableList
+          ids={visibleSections}
+          onMove={moveSection}
+          getName={sectionTitle}
+          renderOverlay={(id) => sectionTitle(id)}
         >
-          + Add project
-        </button>
-
-        <h2 className="paper-h">Experience</h2>
-        <ul className="paper-list">
-          {(resume.experienceList || []).map((e, i) => (
-            <li key={i}>
-              <span className="paper-strong">
-                <EditableText
-                  value={e.role}
-                  onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, role: v }) })}
-                />
-              </span>
-              {" at "}
-              <EditableText
-                value={e.company}
-                onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, company: v }) })}
-              />
-              {": "}
-              <EditableText
-                value={e.desc}
-                multiline
-                onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, desc: v }) })}
-              />
-              <button
-                onClick={() => set({ experienceList: removeArrayItem(resume.experienceList, i) })}
-                className="remove-x"
-                aria-label="Remove experience"
-                title="Remove experience"
-              >×</button>
-            </li>
-          ))}
-        </ul>
-        <button
-          onClick={() => set({ experienceList: addArrayItem(resume.experienceList, { role: "New role", company: "Company", desc: "Description" }) })}
-          className="add-line"
-        >
-          + Add experience
-        </button>
+          {(id, index, drop) => (
+            <SortableItem key={id} id={id} as="section" className="paper-section" drop={drop}>
+              {({ handle }) => (
+                <>
+                  <h2 className="paper-h">
+                    <span>{sectionTitle(id)}</span>
+                    <ReorderTools
+                      handle={handle}
+                      name={`the ${sectionTitle(id)} section`}
+                      index={index}
+                      count={visibleSections.length}
+                      onMove={moveSection}
+                    />
+                  </h2>
+                  {renderSection[id]()}
+                </>
+              )}
+            </SortableItem>
+          )}
+        </SortableList>
       </article>
     </div>
   )
