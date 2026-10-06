@@ -46,3 +46,13 @@ export function moveItem(list, from, to) {
   next.splice(to, 0, item)
   return next
 }
+
+// Content length levels (FR-2). Word limits are maximums; the AI never pads to reach a minimum.
+export const LENGTHS = [
+  { id: "concise", label: "Concise", summary: [0, 30], entry: [0, 20], pages: 1, hint: "Up to 30-word summary, key result only" },
+  { id: "balanced", label: "Balanced", summary: [30, 50], entry: [20, 40], pages: 1, hint: "30–50 word summary, 20–40 per entry" },
+  { id: "detailed", label: "Detailed", summary: [50, 80], entry: [40, 70], pages: 2, hint: "Tools and results spelled out, up to 2 pages" }
+]
+export const DEFAULT_LENGTH = "balanced"
+export const lengthLevel = (id) => LENGTHS.find((l) => l.id === id) || LENGTHS.find((l) => l.id === DEFAULT_LENGTH)
+export const getLength = (resume) => lengthLevel(resume?.settings?.length).id

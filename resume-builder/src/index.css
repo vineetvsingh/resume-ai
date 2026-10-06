@@ -1579,3 +1579,61 @@ textarea.editable-input { min-height: 64px; resize: vertical; }
   .paper-entry .reorder-btn { width: 30px; height: 30px; }
   .paper-entry > .reorder-tools { display: flex; margin: 4px 0 0; }
 }
+
+/* ---------- Content length ---------- */
+.length-options {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.length-option { position: relative; }
+.length-option input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.length-option span {
+  display: block;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.length-option:hover span { color: var(--ink); }
+.length-option.is-selected span { background: var(--ink); color: var(--on-ink); font-weight: 600; }
+.length-option input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 2px; }
+.length-option input:disabled { cursor: not-allowed; }
+.length-picker:has(input:disabled) { opacity: 0.6; }
+.length-hint { font-size: 13px; color: var(--ink-3); margin: 8px 0 0; }
+.length-note { display: block; margin-top: 8px; font-size: 13px; }
+.length-picker.is-compact .length-option span { padding: 5px 10px; font-size: 13px; }
+
+.length-bar {
+  max-width: 720px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.length-bar-label { font-size: 13px; color: var(--ink-3); }
+.page-count { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.page-count.is-over { color: var(--pen); }
+.page-warning {
+  max-width: 720px;
+  margin: 0 auto 10px;
+  padding: 9px 14px;
+  font-size: 14px;
+  color: var(--pen);
+  background: var(--pen-soft);
+  border-left: 3px solid var(--pen);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 720px) {
+  .length-options { display: flex; }
+  .length-option { flex: 1; }
+  .length-option span { text-align: center; padding: 9px 6px; }
+}

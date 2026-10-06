@@ -244,6 +244,36 @@ app.delete("/resumes/:id", requireAuth, async (req, res) => {
   }
 })
 
+const BUSY_MESSAGE = "The AI is busy right now. Try again in a minute."
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Seconds Groq asks us to wait, from "Please try again in 7.2s" (or 1m3s), or null
+function retryAfterSeconds(data) {
+  const m = String(data?.error?.message || "").match(/try again in (?:(\d+)m)?([\d.]+)s/)
+  return m ? Number(m[1] || 0) * 60 + Number(m[2]) : null
+}
+
+// Calls Groq's chat API; on a rate limit, waits once if the wait is short, otherwise throws a "busy" error
+async function groqChat(body) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
+      body: JSON.stringify(body)
+    })
+    const data = await response.json()
+    if (response.status !== 429) return data
+    const wait = retryAfterSeconds(data)
+    if (attempt === 1 && wait !== null && wait <= 12) {
+      await sleep(wait * 1000 + 250)
+      continue
+    }
+    const err = new Error(BUSY_MESSAGE)
+    err.busy = true
+    throw err
+  }
+}
+
 app.post("/api/generate", async (req, res) => {
   const { prompt, systemPrompt } = req.body
   if (!prompt || typeof prompt !== "string") {
@@ -253,25 +283,19 @@ app.post("/api/generate", async (req, res) => {
     return res.status(400).json({ error: "systemPrompt is required and must be a string" })
   }
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-20b",
-        reasoning_effort: "low",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt }
-        ],
-        max_tokens: 1500
-      })
+    const data = await groqChat({
+      model: "openai/gpt-oss-20b",
+      reasoning_effort: "low",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 1500
     })
-    const data = await response.json()
+    if (data.error) return res.status(502).json({ error: "The AI could not answer right now. Try again in a moment." })
     res.json(data)
   } catch (e) {
+    if (e.busy) return res.status(503).json({ error: BUSY_MESSAGE })
     res.status(500).json({ error: "Groq API call failed" })
   }
 })
@@ -375,27 +399,23 @@ roadmapSchema.index({ userId: 1, key: 1 }, { unique: true })
 const Roadmap = mongoose.model("Roadmap", roadmapSchema)
 
 async function askGroqForJSON(systemPrompt, prompt, maxTokens) {
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: "openai/gpt-oss-20b",
-      reasoning_effort: "low",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: prompt }
-      ],
-      max_tokens: maxTokens,
-      response_format: { type: "json_object" }
-    })
+  const data = await groqChat({
+    model: "openai/gpt-oss-20b",
+    reasoning_effort: "low",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: prompt }
+    ],
+    max_tokens: maxTokens,
+    response_format: { type: "json_object" }
   })
-  const data = await response.json()
   const text = (data.choices?.[0]?.message?.content || "").replace(/```json|```/g, "").trim()
   const match = text.match(/\{[\s\S]*\}/)
-  if (!match) throw new Error("No JSON in AI response")
+  if (!match) {
+    // Say why, so failures in the server logs can be told apart (rate limit, token limit, empty answer)
+    const why = data.error?.message || `finish_reason=${data.choices?.[0]?.finish_reason || "none"}`
+    throw new Error(`No JSON in AI response (${why})`)
+  }
   return JSON.parse(match[0])
 }
 
@@ -476,6 +496,7 @@ Return ONLY a JSON object with no markdown or backticks:
         plan = normalizePlan(await askGroqForJSON("You are a practical career mentor for Indian CS students. Return only valid JSON, no markdown, no backticks.", prompt, 2500))
       } catch (e) {
         console.error(`Roadmap generation attempt ${attempt} failed:`, e.message)
+        if (e.busy) return res.status(503).json({ error: BUSY_MESSAGE })
       }
     }
     if (!plan) {
@@ -706,11 +727,214 @@ Return ONLY a JSON object:
       return res.json({ summary, summaryKept: false, ...lastOrders })
     } catch (e) {
       console.error(`Tailoring attempt ${attempt} failed:`, e.message)
+      if (e.busy) return res.status(503).json({ error: BUSY_MESSAGE })
     }
   }
   // The AI kept adding facts: keep the user's own summary and apply only the reordering
   if (lastOrders) return res.json({ summary: resume.summary || "", summaryKept: true, ...lastOrders })
   res.status(502).json({ error: "The AI could not tailor this resume right now. Try again in a moment." })
+})
+
+// ---------- Content length ----------
+// Rewrites the summary and entry descriptions to a length level without adding or dropping facts.
+// No login needed: logged-out users can use every setting during their session.
+
+const LENGTH_LEVELS = {
+  concise: { label: "Concise", summary: [0, 30], entry: [0, 20], note: "Keep only the key result of each entry." },
+  balanced: { label: "Balanced", summary: [30, 50], entry: [20, 40], note: "" },
+  detailed: { label: "Detailed", summary: [50, 80], entry: [40, 70], note: "Spell out the tools used and measurable results that are already stated for each entry. Add detail only by explaining what the original text says more fully." }
+}
+
+const countWords = (text) => String(text || "").trim().split(/\s+/).filter(Boolean).length
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"]
+// Digits in the text, with small number words ("five years") counted as their digits
+const numbersIn = (text) => {
+  const spelled = String(text || "").toLowerCase().match(new RegExp(`\\b(${NUMBER_WORDS.join("|")})\\b`, "g")) || []
+  return [...(String(text || "").match(NUMBER_PATTERN) || []), ...spelled.map((w) => String(NUMBER_WORDS.indexOf(w)))]
+}
+
+// Capitalised or symbol-bearing words (React, Node.js, C++, AWS) that a rewrite must not introduce
+function techWords(text) {
+  const raw = String(text || "").split(/[\s/,‐-―-]+/).filter(Boolean)
+  return raw
+    .map((token, i) => {
+      const word = token.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9+#]+$/g, "")
+      const sentenceStart = i === 0 || /[.!?:;]$/.test(raw[i - 1])
+      const symbol = /[.+#]/.test(word) || /[A-Z]/.test(word.slice(1))
+      return word.length > 1 && (symbol || (!sentenceStart && /^[A-Z]/.test(word))) ? word : null
+    })
+    .filter(Boolean)
+}
+
+// Asks the AI to compare rewrites with their originals; returns { key: "unsupported phrase" }.
+// Returns null if the review could not run; callers then treat every rewrite as unchecked.
+async function findUnsupportedClaims(pairs, allFacts = "") {
+  if (!pairs.length) return {}
+  const extra = allFacts
+  const prompt = `Compare each rewritten resume line with its original. List any claim in the rewrite that the original does not state or directly imply: an added outcome, benefit, impact, quality, skill, tool, number or responsibility. Rewording, shortening and reordering are fine.${extra ? `
+A claim is also supported if these resume facts and details the student gave state it: ${extra}` : ""}
+
+${pairs.map(([f, text]) => `key: ${f.key}
+original: ${f.text}
+rewrite: ${text}`).join(`
+
+`)}
+
+Return ONLY a JSON object: {"issues":[{"key":"","phrase":"the unsupported words from the rewrite"}]}. Return {"issues":[]} if every rewrite is supported.`
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const out = await askGroqForJSON("You check resume rewrites for invented claims. Be strict but do not flag rewording. Return only valid JSON.", prompt, 3000)
+      if (!Array.isArray(out.issues)) throw new Error("No issues list")
+      const keys = new Set(pairs.map(([f]) => f.key))
+      return Object.fromEntries(out.issues
+        .filter((i) => i && keys.has(i.key) && typeof i.phrase === "string" && i.phrase.trim())
+        .map((i) => [i.key, i.phrase.trim().slice(0, 120)]))
+    } catch (e) {
+      console.error(`Claim review attempt ${attempt} failed:`, e.message)
+      if (e.busy) throw e
+    }
+  }
+  return null
+}
+
+app.post("/resume-length", async (req, res) => {
+  const resume = req.body?.resume
+  const level = LENGTH_LEVELS[req.body?.level]
+  // "rewrite" rewrites every field to the level; "fit" only fixes fields that run over its limits
+  const mode = req.body?.mode === "fit" ? "fit" : "rewrite"
+  if (!resume || typeof resume !== "object") return res.status(400).json({ error: "Resume is required" })
+  if (!level) return res.status(400).json({ error: "Choose Concise, Balanced or Detailed" })
+
+  // Every rewritable field, with its limits and the facts it must keep
+  const fields = []
+  if (typeof resume.summary === "string" && resume.summary.trim()) {
+    fields.push({ key: "summary", title: "Summary", text: resume.summary, limits: level.summary })
+  }
+  for (const listKey of ["projectsList", "experienceList"]) {
+    ;(Array.isArray(resume[listKey]) ? resume[listKey] : []).forEach((entry, i) => {
+      if (entry && typeof entry.desc === "string" && entry.desc.trim()) {
+        const title = listKey === "projectsList" ? entry.name : [entry.role, entry.company].filter(Boolean).join(" at ")
+        fields.push({ key: `${listKey}.${i}`, title: String(title || ""), text: entry.desc, limits: level.entry })
+      }
+    })
+  }
+  const todo = mode === "fit" ? fields.filter((f) => countWords(f.text) > f.limits[1]) : fields
+  if (!todo.length) return res.json({ resume, kept: [] })
+
+  // What the student typed in the form is also fact, and often has more detail than the generated text
+  const source = req.body?.source && typeof req.body.source === "object"
+    ? Object.fromEntries(Object.entries(req.body.source).filter(([, v]) => typeof v === "string" && v.trim()).map(([k, v]) => [k, v.slice(0, 2000)]))
+    : {}
+  const facts = JSON.stringify({
+    name: resume.name, education: resume.education, skills: resume.skillsList,
+    projects: resume.projectsList, experience: resume.experienceList, summary: resume.summary,
+    detailsTheStudentGave: source
+  })
+  // Every word already on the resume; a capitalised or technical word is fine if it appears here
+  const factsVocab = new Set(facts.toLowerCase().split(/[^a-z0-9+#.]+/).filter(Boolean)
+    .flatMap((w) => [w.replace(/\.+$/, ""), ...w.split(".")]).filter(Boolean))
+  // Common abbreviations count as the same fact both ways
+  if (factsVocab.has("cs")) ["computer", "science"].forEach((w) => factsVocab.add(w))
+  if (factsVocab.has("computer") && factsVocab.has("science")) factsVocab.add("cs")
+
+  // Problems with one rewritten field, or [] when it is acceptable
+  function problems(field, text) {
+    const out = []
+    const words = countWords(text)
+    if (!text.trim()) out.push("it is empty")
+    if (words > field.limits[1]) out.push(`it has ${words} words; the maximum is ${field.limits[1]}`)
+    const before = numbersIn(field.text)
+    const after = numbersIn(text)
+    const lost = before.filter((n) => !after.includes(n))
+    const added = after.filter((n) => !numbersIn(facts).includes(n))
+    if (lost.length) out.push(`it drops the number(s) ${lost.join(", ")}, which must stay`)
+    if (added.length) out.push(`it adds the number(s) ${added.join(", ")}, which are not on the resume`)
+    const known = (w) => {
+      const lower = w.toLowerCase().replace(/\.+$/, "")
+      return factsVocab.has(lower) || factsVocab.has(lower.replace(/s$/, "")) || factsVocab.has(`${lower}s`)
+    }
+    const newTech = [...new Set(techWords(text).filter((w) => !known(w)))]
+    if (newTech.length) out.push(`it mentions ${newTech.join(", ")}, which are not on the resume`)
+    return out
+  }
+
+  const results = {}
+  let pending = todo
+  let feedback = ""
+  // Shortening gets a third attempt (only failing lines are resent); expanding stops at two
+  const attempts = level.label === "Detailed" ? 2 : 3
+  for (let attempt = 1; attempt <= attempts && pending.length; attempt++) {
+    const prompt = `Rewrite these parts of a student's resume to the "${level.label}" length.
+
+Limits:
+- Summary: ${level.summary[0] ? `${level.summary[0]} to ` : "at most "}${level.summary[1]} words.
+- Each project or experience description: ${level.entry[0] ? `${level.entry[0]} to ` : "at most "}${level.entry[1]} words.
+${level.note}
+
+Strict rules:
+- Keep every name, number, skill and fact that is in the original text. Never drop a number.
+- Never add a skill, tool, number, employer or achievement that is not in the resume facts below.
+- Never add outcomes, impact or benefits that are not stated, such as "improved outcomes", "enhanced quality" or "guided strategy".
+- If there is not enough to reach the minimum, stay shorter, or return the original text unchanged. Never pad.
+- Write in resume style: start project and experience lines with a past-tense verb (Built, Analysed, Cut), no "I" or "my", no repeating the title.
+- Spell numbers as digits, exactly as in the original.
+- Never go over the maximum word count.
+
+Resume facts (for reference only): ${facts}
+
+Rewrite each of these (key, title, original text):
+${pending.map((f) => `- ${f.key} | ${f.title} | ${f.text}`).join("\n")}${feedback}
+
+Return ONLY a JSON object: {"rewrites":[{"key":"","text":""}]}`
+
+    try {
+      const out = await askGroqForJSON("You shorten or expand resume text without inventing or losing facts. Return only valid JSON.", prompt, 4000)
+      const byKey = Object.fromEntries((Array.isArray(out.rewrites) ? out.rewrites : [])
+        .filter((r) => r && typeof r.key === "string" && typeof r.text === "string")
+        .map((r) => [r.key, r.text.trim()]))
+      const failed = []
+      const notes = []
+      const candidates = []
+      for (const f of pending) {
+        const text = byKey[f.key]
+        const issues = text === undefined ? ["it was missing from your answer"] : problems(f, text)
+        if (issues.length) { failed.push(f); notes.push(`- ${f.key}: ${issues.join("; ")}`) }
+        else candidates.push([f, text])
+      }
+      // Rewrites that grow can add claims, so they get a second AI check; one that cannot be checked is not accepted
+      const growing = candidates.filter(([f, text]) => countWords(text) > countWords(f.text))
+      const unsupported = growing.length
+        ? (await findUnsupportedClaims(growing, facts)) || Object.fromEntries(growing.map(([f]) => [f.key, "(could not be checked)"]))
+        : {}
+      for (const [f, text] of candidates) {
+        if (unsupported[f.key]) {
+          failed.push(f)
+          notes.push(`- ${f.key}: it claims "${unsupported[f.key]}", which the original does not say`)
+        } else results[f.key] = text
+      }
+      pending = failed
+      feedback = failed.length ? `\n\nYour previous answer had problems. Fix them:\n${notes.join("\n")}` : ""
+      if (failed.length) console.error(`Length rewrite attempt ${attempt}:`, notes.join(" "))
+    } catch (e) {
+      console.error(`Length rewrite attempt ${attempt} failed:`, e.message)
+      if (e.busy) return res.status(503).json({ error: BUSY_MESSAGE })
+    }
+  }
+
+  // Apply the accepted rewrites; anything still failing keeps its original text
+  const next = {
+    ...resume,
+    projectsList: Array.isArray(resume.projectsList) ? resume.projectsList.map((p) => ({ ...p })) : resume.projectsList,
+    experienceList: Array.isArray(resume.experienceList) ? resume.experienceList.map((e) => ({ ...e })) : resume.experienceList
+  }
+  for (const [key, text] of Object.entries(results)) {
+    if (key === "summary") next.summary = text
+    else {
+      const [listKey, i] = key.split(".")
+      next[listKey][Number(i)].desc = text
+    }
+  }
+  res.json({ resume: next, kept: pending.map((f) => f.title || f.key) })
 })
 
 app.get("/dashboard", requireAuth, async (req, res) => {

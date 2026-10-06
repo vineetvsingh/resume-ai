@@ -1,3 +1,5 @@
+import LengthPicker from "./LengthPicker"
+
 function Field({ label, hint, children }) {
   return (
     <label className="field">
@@ -10,7 +12,7 @@ function Field({ label, hint, children }) {
   )
 }
 
-export default function ResumeForm({ formData, setFormData, onGenerate, onClear, loading }) {
+export default function ResumeForm({ formData, setFormData, onGenerate, onClear, loading, length, onLengthChange, lengthBusy, hasResume }) {
   const handle = (field) => (e) => setFormData({ ...formData, [field]: e.target.value })
 
   return (
@@ -52,6 +54,16 @@ export default function ResumeForm({ formData, setFormData, onGenerate, onClear,
         <Field label="Target role">
           <input className="input" placeholder="Software Engineer, Frontend Developer" onChange={handle('role')} value={formData.role} />
         </Field>
+      </div>
+
+      <div className="form-section length-section">
+        <h2 className="form-section-title">Length</h2>
+        <LengthPicker value={length} onChange={onLengthChange} disabled={loading || lengthBusy} name="length-form" />
+        {hasResume && (
+          <p className="field-hint length-note">
+            {lengthBusy ? "Rewriting your resume…" : "Changing this rewrites your resume to the new length, keeping every fact. You can undo it."}
+          </p>
+        )}
       </div>
 
       <div className="form-actions">

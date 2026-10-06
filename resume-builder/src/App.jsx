@@ -16,7 +16,7 @@ import VersionBar from "./components/VersionBar"
 import VersionDialog from "./components/VersionDialog"
 import ConfirmDialog from "./components/ConfirmDialog"
 import { api, getToken, setToken, BACKEND_URL } from "./auth"
-import { contentOnly } from "./resumeLayout"
+import { contentOnly, withSettings, getLength, lengthLevel, DEFAULT_LENGTH } from "./resumeLayout"
 
 const TABS = ["Build", "ATS Score", "Suggestions"]
 
@@ -33,6 +33,12 @@ async function callGroq(prompt, systemPrompt) {
     body: JSON.stringify({ prompt, systemPrompt })
   })
   const data = await res.json()
+  if (!res.ok) {
+    // The server explains failures (for example, the AI being busy); show that instead of a generic error
+    const err = new Error(data.error || "The AI could not answer right now.")
+    err.userFacing = true
+    throw err
+  }
   return data.choices?.[0]?.message?.content || ""
 }
 
@@ -136,6 +142,10 @@ export default function App() {
   // The resume as it was before the last AI rewrite, so it can be undone in one step
   const [aiUndo, setAiUndo] = useState(null)
   const [tailoring, setTailoring] = useState(false)
+  // Length chosen before generating; once a resume exists, its saved setting is used
+  const [lengthChoice, setLengthChoice] = useState(DEFAULT_LENGTH)
+  const [lengthBusy, setLengthBusy] = useState(false)
+  const currentLength = resume ? getLength(resume) : lengthChoice
   // { mode: "create" | "edit", source } for the version dialog
   const [versionDialog, setVersionDialog] = useState(null)
   // { title, message, confirmLabel, onConfirm } for confirmations
@@ -150,8 +160,9 @@ export default function App() {
     if (!formData.name || !formData.skills) return
     setBuildLoading(true)
     setBuildError(null)
+    const level = lengthLevel(currentLength)
     try {
-      const prompt = `Generate a resume for an Indian CS student:
+      const prompt = `Write a resume for a computer science student in India, using only the details below.
 Name: ${formData.name}
 Email: ${formData.email}
 Phone: ${formData.phone}
@@ -162,10 +173,17 @@ Projects: ${formData.projects}
 Experience: ${formData.experience}
 Target Role: ${formData.role}
 
+Length: ${level.label}. Summary: ${level.summary[0] ? `${level.summary[0]} to ` : "at most "}${level.summary[1]} words. Each project and experience description: ${level.entry[0] ? `${level.entry[0]} to ` : "at most "}${level.entry[1]} words.
+Rules:
+- Use only the details given above. If there is not enough to reach a minimum, write less. Never invent achievements, numbers, tools, skills, outcomes or impact.
+- No filler or self-praise: avoid words like passionate, dynamic, proven, results-driven, user-centric.
+- Resume style: no "I" or "my"; start project and experience descriptions with a past-tense verb.
+- Do not mention nationality.
+
 Return ONLY a JSON object with no markdown or backticks:
 {"name":"","email":"","phone":"","summary":"2 line summary","education":"college | cgpa | year","skillsList":["skill1"],"projectsList":[{"name":"","desc":""}],"experienceList":[{"role":"","company":"","desc":""}]}`
 
-      const response = await callGroq(prompt, "You are a professional resume writer for Indian CS students. Return only valid JSON, no markdown, no backticks.")
+      const response = await callGroq(prompt, "You are a careful resume writer. You only use facts the student gave. Return only valid JSON, no markdown, no backticks.")
       const clean = response.replace(/```json|```/g, "").trim()
       let data
       try {
@@ -178,11 +196,20 @@ Return ONLY a JSON object with no markdown or backticks:
           throw new Error("Could not parse AI response")
         }
       }
-      // Regenerating keeps the layout the user already chose
-      setResume(resume?.settings ? { ...data, settings: resume.settings } : data)
+      // Regenerating keeps the layout the user already chose, with the chosen length
+      let generated = { ...data, settings: { ...(resume?.settings || {}), length: level.id } }
+      try {
+        // The AI sometimes runs over the limits; trim just those parts, keeping every fact
+        const fitted = await api("/resume-length", { method: "POST", body: { resume: generated, level: level.id, mode: "fit", source: formData } })
+        generated = fitted.resume
+      } catch {
+        // Keep the untrimmed text rather than failing the whole generation
+      }
+      setResume(generated)
+      setAiUndo(null)
       revealPreview()
     } catch (e) {
-      setBuildError("Something went wrong generating your resume. Please try again.")
+      setBuildError(e.userFacing ? e.message : "Something went wrong generating your resume. Please try again.")
     }
     setBuildLoading(false)
   }
@@ -227,7 +254,7 @@ Return ONLY a JSON object with no markdown or backticks:
         }).then(() => { if (dashboard) loadDashboard() }).catch(() => {})
       }
     } catch (e) {
-      setScoreError("Something went wrong analyzing your resume. Please try again.")
+      setScoreError(e.userFacing ? e.message : "Something went wrong analyzing your resume. Please try again.")
     }
     setScoreLoading(false)
   }
@@ -257,7 +284,7 @@ Return ONLY a JSON object with no markdown or backticks:
       }
       setSuggestResult(data)
     } catch (e) {
-      setSuggestResult({ suggestions: [], error: "Something went wrong. Try again." })
+      setSuggestResult({ suggestions: [], error: e.userFacing ? e.message : "Something went wrong. Try again." })
     }
     setSuggestLoading(false)
   }
@@ -568,6 +595,29 @@ Return ONLY a JSON object with no markdown or backticks:
     setTailoring(false)
   }
 
+  async function changeLength(id) {
+    if (!resume) {
+      setLengthChoice(id)
+      return
+    }
+    if (id === currentLength || lengthBusy) return
+    const level = lengthLevel(id)
+    setLengthBusy(true)
+    setBuildError(null)
+    try {
+      const out = await api("/resume-length", { method: "POST", body: { resume, level: id, mode: "rewrite", source: formData } })
+      setAiUndo({ resume, label: `Changed length to ${level.label}` })
+      setResume(withSettings(out.resume, { length: id }))
+      setLengthChoice(id)
+      showSaveNote(out.kept?.length
+        ? `Rewritten as ${level.label}. ${out.kept.length === 1 ? "One line was kept as it was" : `${out.kept.length} lines were kept as they were`}, since rewriting it safely was not possible without adding things that are not on your resume.`
+        : `Rewritten as ${level.label}, keeping every fact. Review it, then save.`, 9000)
+    } catch (e) {
+      setBuildError(describeApiError(e, "Could not change the length. Check that the backend is running."))
+    }
+    setLengthBusy(false)
+  }
+
   function undoAiChange() {
     if (!aiUndo) return
     setResume(aiUndo.resume)
@@ -769,7 +819,17 @@ Return ONLY a JSON object with no markdown or backticks:
             <p className="page-lede">{TAB_COPY[activeTab].lede}</p>
 
             {activeTab === "Build" && (
-              <ResumeForm formData={formData} setFormData={setFormData} onGenerate={handleGenerate} onClear={handleClearForm} loading={buildLoading} />
+              <ResumeForm
+                formData={formData}
+                setFormData={setFormData}
+                onGenerate={handleGenerate}
+                onClear={handleClearForm}
+                loading={buildLoading}
+                length={currentLength}
+                onLengthChange={changeLength}
+                lengthBusy={lengthBusy}
+                hasResume={Boolean(resume)}
+              />
             )}
             {activeTab === "ATS Score" && (
               <ATSScorer
@@ -811,6 +871,9 @@ Return ONLY a JSON object with no markdown or backticks:
             onResumeChange={setResume}
             saveNote={saveNote}
             undo={aiUndo ? { label: aiUndo.label, onUndo: undoAiChange } : null}
+            length={currentLength}
+            onLengthChange={changeLength}
+            lengthBusy={lengthBusy}
           />
         </section>
       </main>
