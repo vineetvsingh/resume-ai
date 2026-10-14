@@ -1,6 +1,7 @@
 // Resume style settings (FR-4). Saved in resume.settings.style; read by the edit view, the page view and the PDF.
 
 export const FONTS = [
+  { id: "latin-modern", name: "Latin Modern (LaTeX)", kind: "Serif" },
   { id: "source-serif-4", name: "Source Serif 4", kind: "Serif" },
   { id: "merriweather", name: "Merriweather", kind: "Serif" },
   { id: "lora", name: "Lora", kind: "Serif" },
@@ -34,6 +35,7 @@ export const SECTION_SPACINGS = [
 
 // Design modes (FR-5): how visual the resume is. The text is the same in every mode.
 export const MODES = [
+  { id: "latex", label: "LaTeX", hint: "The one-page LaTeX template: small-caps headings, dates on the right, bullets", safety: "Safest for ATS" },
   { id: "formal", label: "Formal", hint: "Text only, one column, black and grey", safety: "Safest for ATS" },
   { id: "modern", label: "Modern", hint: "Accent colour, contact icons, skill tags", safety: "Safe for ATS" },
   { id: "creative", label: "Creative", hint: "Two columns with a sidebar and skill bars", safety: "Risky for ATS" }
@@ -64,6 +66,27 @@ export const DEFAULT_STYLE = {
   mode: "formal",
   accent: "navy"
 }
+
+// The one-page LaTeX resume template (resume_template.tex): Latin Modern, 10pt text with \small body lines
+export const LATEX_STYLE = {
+  ...DEFAULT_STYLE,
+  headingFont: "latin-modern",
+  bodyFont: "latin-modern",
+  sizes: { name: 26, heading: 12, subheading: 10, body: 9 },
+  text: {
+    name: { bold: true, italic: false, upper: false },
+    heading: { bold: false, italic: false, upper: false },
+    subheading: { bold: true, italic: false, upper: false }
+  },
+  divider: { show: true, style: "solid", width: 0.5 },
+  lineSpacing: 1.2,
+  sectionSpacing: "compact",
+  mode: "latex"
+}
+
+// The full style a mode starts from: LaTeX has its own look; the other modes share the default one
+export const styleForMode = (mode, accent = DEFAULT_STYLE.accent) =>
+  mode === "latex" ? { ...LATEX_STYLE, accent } : { ...DEFAULT_STYLE, mode, accent }
 
 export const PRESETS = [
   { id: "classic", label: "Classic", style: DEFAULT_STYLE },
@@ -156,6 +179,10 @@ export function getSkillLevels(resume) {
 
 // jsPDF style name for a bold/italic pair
 export const variantOf = ({ bold, italic }) => (bold && italic ? "bolditalic" : bold ? "bold" : italic ? "italic" : "normal")
+
+// Latin Modern has a real small-caps cut, used for LaTeX section headings
+export const CAPS_FONT = "latin-modern-caps"
+export const hasSmallCaps = (fontId) => fontId === "latin-modern"
 
 // The font file for a font id and variant
 export function fontFile(id, variant) {

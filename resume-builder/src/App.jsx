@@ -16,7 +16,10 @@ import VersionBar from "./components/VersionBar"
 import VersionDialog from "./components/VersionDialog"
 import ConfirmDialog from "./components/ConfirmDialog"
 import { api, getToken, setToken, BACKEND_URL } from "./auth"
-import { contentOnly, withSettings, getLength, lengthLevel, DEFAULT_LENGTH } from "./resumeLayout"
+import { contentOnly, withSettings, getLength, lengthLevel, DEFAULT_LENGTH, LATEX_SECTION_ORDER } from "./resumeLayout"
+import { getStyle, LATEX_STYLE } from "./resumeStyle"
+import { educationEntries, plainText, bulletsOf } from "./resumeData"
+import { EMPTY_FORM, resumePrompt, cleanGenerated } from "./generate"
 
 const TABS = ["Build", "ATS Score", "Suggestions"]
 
@@ -24,6 +27,35 @@ const TAB_COPY = {
   "Build": { title: "Build your resume", lede: "Add your details and we will draft a clean, one-page resume you can edit line by line." },
   "ATS Score": { title: "Check your ATS match", lede: "Check the resume you built here, or upload one you already have. Add a job description to see which keywords it covers and which it misses." },
   "Suggestions": { title: "Improve your resume", lede: "Describe the role you want. You will get specific rewrites for weak or missing lines." }
+}
+
+// The Build form filled from a saved resume, so regenerating keeps its details (links, dates, places)
+function formFromResume(d) {
+  const edu = educationEntries(d)[0] || {}
+  const text = (v) => bulletsOf(plainText(v)).join("; ")
+  const entries = (items, line) => (items || []).map(line).filter(Boolean).join("\n")
+  return {
+    ...EMPTY_FORM,
+    name: d.name || "",
+    email: d.email || "",
+    phone: d.phone || "",
+    linkedin: d.links?.linkedin || "",
+    github: d.links?.github || "",
+    website: d.links?.website || "",
+    college: edu.school || "",
+    collegeLocation: edu.location || "",
+    degree: edu.degree || "",
+    eduDates: edu.dates || "",
+    cgpa: edu.score || "",
+    coursework: edu.coursework || "",
+    skills: (d.skillsList || []).join(", "),
+    projects: entries(d.projectsList, (p) => [p.name, p.tech && `(${p.tech})`, p.link].filter(Boolean).join(" ") + `: ${text(p.desc)}`),
+    experience: entries(d.experienceList, (e) => [[e.role, e.company].filter(Boolean).join(" at "), e.location, e.dates].filter(Boolean).join(", ") + `: ${text(e.desc)}`),
+    certifications: entries(d.certifications, (c) => [c.name, c.issuer].filter(Boolean).join(" - ")),
+    achievements: entries(d.achievements, (a) => [a.title && `${a.title}:`, text(a.desc), a.year, a.link].filter(Boolean).join(" ")),
+    openSource: entries(d.openSource, (o) => [o.name, o.tech && `(${o.tech})`, o.link].filter(Boolean).join(" ") + `: ${text(o.desc)}`),
+    role: d.headline || ""
+  }
 }
 
 async function callGroq(prompt, systemPrompt) {
@@ -133,7 +165,7 @@ export default function App() {
     return e.status ? e.message : fallback
   }
 
-  const [formData, setFormData] = useState({ name: "", email: "", phone: "", college: "", cgpa: "", skills: "", projects: "", experience: "", role: "" })
+  const [formData, setFormData] = useState(EMPTY_FORM)
 
   const [resume, setResume] = useState(null)
   const [loadedResumeId, setLoadedResumeId] = useState(null)
@@ -161,28 +193,10 @@ export default function App() {
     setBuildLoading(true)
     setBuildError(null)
     const level = lengthLevel(currentLength)
+    // New resumes use the LaTeX template, which has no summary; regenerating keeps the resume's own design
+    const mode = resume ? getStyle(resume).mode : "latex"
     try {
-      const prompt = `Write a resume for a computer science student in India, using only the details below.
-Name: ${formData.name}
-Email: ${formData.email}
-Phone: ${formData.phone}
-College: ${formData.college}
-CGPA: ${formData.cgpa}
-Skills: ${formData.skills}
-Projects: ${formData.projects}
-Experience: ${formData.experience}
-Target Role: ${formData.role}
-
-Length: ${level.label}. Summary: ${level.summary[0] ? `${level.summary[0]} to ` : "at most "}${level.summary[1]} words. Each project and experience description: ${level.entry[0] ? `${level.entry[0]} to ` : "at most "}${level.entry[1]} words.
-Rules:
-- Use only the details given above. If there is not enough to reach a minimum, write less. Never invent achievements, numbers, tools, skills, outcomes or impact.
-- No filler or self-praise: avoid words like passionate, dynamic, proven, results-driven, user-centric.
-- Resume style: no "I" or "my"; start project and experience descriptions with a past-tense verb.
-- Do not mention nationality.
-
-Return ONLY a JSON object with no markdown or backticks:
-{"name":"","email":"","phone":"","summary":"2 line summary","education":"college | cgpa | year","skillsList":["skill1"],"projectsList":[{"name":"","desc":""}],"experienceList":[{"role":"","company":"","desc":""}]}`
-
+      const prompt = resumePrompt(formData, level, { withSummary: mode !== "latex" })
       const response = await callGroq(prompt, "You are a careful resume writer. You only use facts the student gave. Return only valid JSON, no markdown, no backticks.")
       const clean = response.replace(/```json|```/g, "").trim()
       let data
@@ -197,7 +211,8 @@ Return ONLY a JSON object with no markdown or backticks:
         }
       }
       // Regenerating keeps the layout the user already chose, with the chosen length
-      let generated = { ...data, settings: { ...(resume?.settings || {}), length: level.id } }
+      const settings = resume?.settings || { style: LATEX_STYLE, sectionOrder: LATEX_SECTION_ORDER }
+      let generated = { ...cleanGenerated(data, formData), settings: { ...settings, length: level.id } }
       try {
         // The AI sometimes runs over the limits; trim just those parts, keeping every fact
         const fitted = await api("/resume-length", { method: "POST", body: { resume: generated, level: level.id, mode: "fit", source: formData } })
@@ -355,17 +370,7 @@ Return ONLY a JSON object with no markdown or backticks:
   }
 
   function handleClearForm() {
-    setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      college: "",
-      cgpa: "",
-      skills: "",
-      projects: "",
-      experience: "",
-      role: ""
-    })
+    setFormData(EMPTY_FORM)
     setBuildError(null)
   }
 
@@ -487,14 +492,16 @@ Return ONLY a JSON object with no markdown or backticks:
     handleClearResume()
     const p = user?.profile || {}
     setFormData({
+      ...EMPTY_FORM,
       name: p.name || "",
       email: user?.email || "",
       phone: p.phone || "",
+      linkedin: p.linkedin || "",
+      github: p.github || "",
+      website: p.portfolio || "",
       college: p.college || "",
       cgpa: p.cgpa || "",
-      skills: "",
-      projects: "",
-      experience: "",
+      eduDates: p.graduationYear || "",
       role: p.targetRole || ""
     })
     setBuildError(null)
@@ -603,9 +610,11 @@ Return ONLY a JSON object with no markdown or backticks:
         projectsList: reorder(base.projectsList, out.projectsOrder),
         experienceList: reorder(base.experienceList, out.experienceOrder)
       })
-      showSaveNote(out.summaryKept
-        ? "Reordered your skills and projects for this job. Your summary was kept, since a rewrite would have added things not on your resume."
-        : "Tailored to this job using only what was already on your resume. Review it, then save.", 9000)
+      showSaveNote(!base.summary
+        ? "Reordered your skills, projects and experience for this job, most relevant first. Review it, then save."
+        : out.summaryKept
+          ? "Reordered your skills and projects for this job. Your summary was kept, since a rewrite would have added things not on your resume."
+          : "Tailored to this job using only what was already on your resume. Review it, then save.", 9000)
     } catch (e) {
       setBuildError(describeApiError(e, "Could not tailor. Check that the backend is running."))
     }
@@ -709,17 +718,7 @@ Return ONLY a JSON object with no markdown or backticks:
     setResumeMeta({ name: r.name, parentId: r.parentId || null, label: r.label || "", target: r.target || null })
     setAiUndo(null)
     setScoreResult(null)
-    setFormData({
-      name: r.data.name || "",
-      email: r.data.email || "",
-      phone: r.data.phone || "",
-      college: r.data.education?.split("|")[0]?.trim() || "",
-      cgpa: r.data.education?.split("|")[1]?.trim() || "",
-      skills: (r.data.skillsList || []).join(", "),
-      projects: (r.data.projectsList || []).map(p => `${p.name}: ${p.desc}`).join(". "),
-      experience: (r.data.experienceList || []).map(e => `${e.role} at ${e.company}: ${e.desc}`).join(". "),
-      role: ""
-    })
+    setFormData(formFromResume(r.data))
     setView("workspace")
     setActiveTab("Build")
     window.scrollTo({ top: 0 })

@@ -109,7 +109,7 @@ export default function DesignPanel({ style, onChange, onPreset, onReset, onAppl
             ATS software can misread two columns and graphics. For online applications, use Formal; keep Creative for printed or emailed copies.
           </div>
         )}
-        {style.mode !== "formal" && (
+        {(style.mode === "modern" || style.mode === "creative") && (
           <div className="design-row accent-row">
             <span className="design-label">Accent colour</span>
             <div className="swatches" role="radiogroup" aria-label="Accent colour">

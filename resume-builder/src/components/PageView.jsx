@@ -34,6 +34,7 @@ export default function PageView({ layout }) {
                 </text>
               )
             }
+            if (item.t === "link") return null
             if (item.t === "rect" && item.fill) {
               return <rect key={j} x={item.x} y={item.y} width={item.w} height={item.h} rx={item.rx || 0} fill={item.fill} />
             }

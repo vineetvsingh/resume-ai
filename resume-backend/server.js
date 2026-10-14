@@ -290,7 +290,7 @@ app.post("/api/generate", async (req, res) => {
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt }
       ],
-      max_tokens: 1500
+      max_tokens: 3000
     })
     if (data.error) return res.status(502).json({ error: "The AI could not answer right now. Try again in a moment." })
     res.json(data)
@@ -690,6 +690,8 @@ app.post("/tailor", requireAuth, async (req, res) => {
   const projects = Array.isArray(resume.projectsList) ? resume.projectsList : []
   const experience = Array.isArray(resume.experienceList) ? resume.experienceList : []
   const facts = JSON.stringify({ summary: resume.summary || "", education: resume.education || "", skills, projects, experience })
+  // Resumes in the LaTeX template have no summary; tailoring them only reorders
+  const hasSummary = typeof resume.summary === "string" && resume.summary.trim() !== ""
   const knownNumbers = new Set(facts.match(NUMBER_PATTERN) || [])
 
   const prompt = `Tailor this student's resume to the job description, using ONLY facts already in the resume.
@@ -699,7 +701,9 @@ Resume facts (JSON): ${facts}
 Job description: ${jobDescription}
 
 Rules:
-- Rewrite the summary in 30 to 50 words so it leads with the experience and skills most relevant to this job.
+${hasSummary
+    ? "- Rewrite the summary in 30 to 50 words so it leads with the experience and skills most relevant to this job."
+    : "- The resume has no summary. Do not write one; return \"summary\" as an empty string."}
 - Use only skills, projects, employers, numbers and achievements that already appear in the resume facts. Do not add any new skill, tool, employer, number or achievement, even if the job asks for it.
 - Reorder skills, projects and experience by relevance to the job, most relevant first. Return each order as the list of original indexes (0-based), including every index exactly once.
 
@@ -728,6 +732,7 @@ Return ONLY a JSON object:
         projectsOrder: isPermutation(out.projectsOrder, projects.length) ? out.projectsOrder : identity(projects),
         experienceOrder: isPermutation(out.experienceOrder, experience.length) ? out.experienceOrder : identity(experience)
       }
+      if (!hasSummary) return res.json({ summary: "", summaryKept: false, ...lastOrders })
       const summary = typeof out.summary === "string" ? out.summary.trim().slice(0, 600) : ""
       if (!summary) throw new Error("No summary")
       const inventedNumbers = (summary.match(NUMBER_PATTERN) || []).filter((n) => !knownNumbers.has(n))
@@ -824,10 +829,10 @@ app.post("/resume-length", async (req, res) => {
   if (typeof resume.summary === "string" && resume.summary.trim()) {
     fields.push({ key: "summary", title: "Summary", text: resume.summary, limits: level.summary })
   }
-  for (const listKey of ["projectsList", "experienceList"]) {
+  for (const listKey of ["projectsList", "experienceList", "openSource"]) {
     ;(Array.isArray(resume[listKey]) ? resume[listKey] : []).forEach((entry, i) => {
       if (entry && typeof entry.desc === "string" && entry.desc.trim()) {
-        const title = listKey === "projectsList" ? entry.name : [entry.role, entry.company].filter(Boolean).join(" at ")
+        const title = listKey === "experienceList" ? [entry.role, entry.company].filter(Boolean).join(" at ") : entry.name
         fields.push({ key: `${listKey}.${i}`, title: String(title || ""), text: entry.desc, limits: level.entry })
       }
     })
@@ -841,7 +846,7 @@ app.post("/resume-length", async (req, res) => {
     : {}
   const facts = JSON.stringify({
     name: resume.name, education: resume.education, skills: resume.skillsList,
-    projects: resume.projectsList, experience: resume.experienceList, summary: resume.summary,
+    projects: resume.projectsList, experience: resume.experienceList, openSource: resume.openSource, summary: resume.summary,
     detailsTheStudentGave: source
   })
   // Every word already on the resume; a capitalised or technical word is fine if it appears here
@@ -891,13 +896,15 @@ Strict rules:
 - Never add outcomes, impact or benefits that are not stated, such as "improved outcomes", "enhanced quality" or "guided strategy".
 - If there is not enough to reach the minimum, stay shorter, or return the original text unchanged. Never pad.
 - Write in resume style: start project and experience lines with a past-tense verb (Built, Analysed, Cut), no "I" or "my", no repeating the title.
+- Some originals are bullet points separated by \\n. Keep those as bullet points separated by \\n, each starting with a past-tense verb. For Concise you may merge them into one bullet.
+- Keep **double asterisks** around the same words they mark in the original.
 - Spell numbers as digits, exactly as in the original.
 - Never go over the maximum word count.
 
 Resume facts (for reference only): ${facts}
 
 Rewrite each of these (key, title, original text):
-${pending.map((f) => `- ${f.key} | ${f.title} | ${f.text}`).join("\n")}${feedback}
+${pending.map((f) => `- ${f.key} | ${f.title} | ${JSON.stringify(f.text)}`).join("\n")}${feedback}
 
 Return ONLY a JSON object: {"rewrites":[{"key":"","text":""}]}`
 
@@ -939,7 +946,8 @@ Return ONLY a JSON object: {"rewrites":[{"key":"","text":""}]}`
   const next = {
     ...resume,
     projectsList: Array.isArray(resume.projectsList) ? resume.projectsList.map((p) => ({ ...p })) : resume.projectsList,
-    experienceList: Array.isArray(resume.experienceList) ? resume.experienceList.map((e) => ({ ...e })) : resume.experienceList
+    experienceList: Array.isArray(resume.experienceList) ? resume.experienceList.map((e) => ({ ...e })) : resume.experienceList,
+    openSource: Array.isArray(resume.openSource) ? resume.openSource.map((o) => ({ ...o })) : resume.openSource
   }
   for (const [key, text] of Object.entries(results)) {
     if (key === "summary") next.summary = text

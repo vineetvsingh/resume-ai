@@ -4,9 +4,11 @@ import { SortableList, SortableItem, ReorderTools } from "./Sortable"
 import { buildResumePdf, layoutWithStyle } from "../pdf"
 import PageView from "./PageView"
 import DesignPanel from "./DesignPanel"
-import { getStyle, normalizeStyle, PRESETS, DEFAULT_STYLE, cssFamily, SECTION_SPACINGS, accentOf, getSkillLevels } from "../resumeStyle"
+import { EditableText, Description } from "./Editable"
+import { templateSections } from "./TemplateSections"
+import { getStyle, normalizeStyle, PRESETS, cssFamily, SECTION_SPACINGS, accentOf, getSkillLevels, styleForMode, hasSmallCaps } from "../resumeStyle"
 import LengthPicker from "./LengthPicker"
-import { getSectionOrder, isDefaultOrder, sectionTitle, sectionHasContent, withSettings, moveItem, DEFAULT_SECTION_ORDER, lengthLevel } from "../resumeLayout"
+import { getSectionOrder, isDefaultOrder, sectionTitle, sectionHasContent, withSettings, moveItem, defaultOrderFor, lengthLevel } from "../resumeLayout"
 
 function updateArrayItem(array, index, newItem) {
   return array.map((item, i) => i === index ? newItem : item)
@@ -38,47 +40,12 @@ function LevelDots({ skill, level, onChange }) {
   )
 }
 
-function EditableText({ value, onChange, multiline, block, placeholder }) {
-  const [editing, setEditing] = useState(false)
-  const [tempValue, setTempValue] = useState(value)
-
-  if (editing) {
-    const Tag = multiline ? "textarea" : "input"
-    return (
-      <Tag
-        autoFocus
-        className="editable-input"
-        value={tempValue}
-        onChange={(e) => setTempValue(e.target.value)}
-        onBlur={() => { onChange(tempValue); setEditing(false) }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !multiline) { onChange(tempValue); setEditing(false) }
-          if (e.key === "Escape") { setTempValue(value); setEditing(false) }
-        }}
-      />
-    )
-  }
-  const start = () => { setTempValue(value); setEditing(true) }
-  return (
-    <span
-      className="editable"
-      role="button"
-      tabIndex={0}
-      onClick={start}
-      onKeyDown={(e) => { if (e.key === "Enter") start() }}
-      style={{ display: block ? "block" : "inline" }}
-    >
-      {value || <span className="editable-empty">{placeholder || "Click to edit"}</span>}
-    </span>
-  )
-}
-
 // CSS variables that make the editable view follow the design settings
 function styleVars(style) {
   const t = (role) => style.text[role]
   const dividerWidth = style.divider.style === "double" ? Math.max(style.divider.width * 3, 2.25) : style.divider.width
   const borderWidth = style.border.type === "double" ? Math.max(style.border.width * 3, 2.25) : style.border.width
-  const accent = style.mode === "formal" ? "#1b1f27" : accentOf(style).hex
+  const accent = style.mode === "formal" || style.mode === "latex" ? "#1b1f27" : accentOf(style).hex
   return {
     "--r-accent": accent,
     "--r-tint": accentOf(style).tint,
@@ -159,7 +126,15 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
     pdf.save(`${resume.name || "resume"}.pdf`)
   }
 
-  const setStyle = (next) => onResumeChange(withSettings(resume, { style: normalizeStyle(next) }))
+  // Entering or leaving LaTeX mode swaps in that mode's own look; the other modes share styles as before
+  const setStyle = (next) => {
+    const switching = next.mode !== style.mode && (next.mode === "latex" || style.mode === "latex")
+    const nextStyle = normalizeStyle(switching ? styleForMode(next.mode, next.accent) : next)
+    const patch = { style: nextStyle }
+    // A resume still in the old mode's default section order takes the new mode's default order
+    if (switching && isDefaultOrder(getSectionOrder(resume, style.mode), style.mode)) patch.sectionOrder = defaultOrderFor(next.mode)
+    onResumeChange(withSettings(resume, patch))
+  }
   async function applyToAll() {
     setApplying(true)
     await onApplyStyleToAll(style)
@@ -198,8 +173,10 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
   const set = (patch) => onResumeChange({ ...resume, ...patch })
   const skillLevels = getSkillLevels(resume)
 
-  const order = getSectionOrder(resume)
-  const visibleSections = order.filter((id) => sectionHasContent(resume, id))
+  const mode = style.mode
+  const latex = mode === "latex"
+  const order = getSectionOrder(resume, mode)
+  const visibleSections = order.filter((id) => sectionHasContent(resume, id, mode))
   // Moving among visible sections; hidden ones (an empty Summary) keep their saved place
   const moveSection = (from, to) => {
     const moved = moveItem(visibleSections, from, to)
@@ -207,13 +184,13 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
     const next = order.map((id) => (visibleSections.includes(id) ? moved[k++] : id))
     onResumeChange(withSettings(resume, { sectionOrder: next }))
   }
-  const resetOrder = () => onResumeChange(withSettings(resume, { sectionOrder: DEFAULT_SECTION_ORDER }))
+  const resetOrder = () => onResumeChange(withSettings(resume, { sectionOrder: defaultOrderFor(mode) }))
 
-  // Projects and experience entries can be reordered the same way
-  const entryList = (key, label, entryName, renderEntry, emptyEntry) => {
-    const list = resume[key] || []
+  // Entries within a section can be reordered the same way. `list` and `setList` override where the
+  // entries are read from and saved to (education keeps a one-line copy for older parts of the app).
+  const entryList = ({ key, label, entryName, renderEntry, empty: emptyEntry, list = resume[key] || [], setList = (next) => set({ [key]: next }) }) => {
     const ids = list.map((_, i) => `${key}-${i}`)
-    const move = (from, to) => set({ [key]: moveItem(list, from, to) })
+    const move = (from, to) => setList(moveItem(list, from, to))
     return (
       <>
         <ul className="paper-list">
@@ -229,7 +206,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
                   <>
                     {renderEntry(list[i], i)}
                     <button
-                      onClick={() => set({ [key]: removeArrayItem(list, i) })}
+                      onClick={() => setList(removeArrayItem(list, i))}
                       className="remove-x"
                       aria-label={`Remove ${entryName(list[i]) || label}`}
                       title={`Remove ${label}`}
@@ -250,7 +227,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
             )}
           </SortableList>
         </ul>
-        <button onClick={() => set({ [key]: addArrayItem(list, emptyEntry) })} className="add-line">
+        <button onClick={() => setList(addArrayItem(list, emptyEntry))} className="add-line">
           + Add {label}
         </button>
       </>
@@ -319,11 +296,11 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         </button>
       </div>
     ),
-    projects: () => entryList(
-      "projectsList",
-      "project",
-      (p) => p?.name,
-      (p, i) => (
+    projects: () => entryList({
+      key: "projectsList",
+      label: "project",
+      entryName: (p) => p?.name,
+      renderEntry: (p, i) => (
         <>
           <span className="paper-strong entry-title">
             <EditableText
@@ -332,21 +309,20 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
             />
           </span>
           <span className="entry-desc">
-            <EditableText
+            <Description
               value={p.desc}
-              multiline
               onChange={(v) => set({ projectsList: updateArrayItem(resume.projectsList, i, { ...p, desc: v }) })}
             />
           </span>
         </>
       ),
-      { name: "New project", desc: "Description" }
-    ),
-    experience: () => entryList(
-      "experienceList",
-      "experience",
-      (e) => [e?.role, e?.company].filter(Boolean).join(" at "),
-      (e, i) => (
+      empty: { name: "New project", desc: "Description" }
+    }),
+    experience: () => entryList({
+      key: "experienceList",
+      label: "experience",
+      entryName: (e) => [e?.role, e?.company].filter(Boolean).join(" at "),
+      renderEntry: (e, i) => (
         <>
           <span className="paper-strong entry-title">
             <EditableText
@@ -360,16 +336,17 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
             />
           </span>
           <span className="entry-desc">
-            <EditableText
+            <Description
               value={e.desc}
-              multiline
               onChange={(v) => set({ experienceList: updateArrayItem(resume.experienceList, i, { ...e, desc: v }) })}
             />
           </span>
         </>
       ),
-      { role: "New role", company: "Company", desc: "Description" }
-    )
+      empty: { role: "New role", company: "Company", desc: "Description" }
+    }),
+    // LaTeX mode replaces these with the template's editors; the optional sections come from there in every mode
+    ...templateSections({ resume, set, entryList, latex })
   }
 
   return (
@@ -409,7 +386,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
           {saveNote || (view === "edit"
             ? "Click any line to edit it. Drag a section's handle to move it."
             : "Exactly what the PDF will look like. Switch to Edit to change the text.")}
-          {!saveNote && !isDefaultOrder(order) && (
+          {!saveNote && !isDefaultOrder(order, mode) && (
             <button onClick={resetOrder} className="link-btn reset-order">Reset order</button>
           )}
         </p>
@@ -434,7 +411,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
           style={style}
           onChange={setStyle}
           onPreset={(id) => setStyle({ ...PRESETS.find((p) => p.id === id).style, mode: style.mode, accent: style.accent })}
-          onReset={() => setStyle(DEFAULT_STYLE)}
+          onReset={() => setStyle(styleForMode(style.mode === "latex" ? "latex" : "formal", style.accent))}
           onApplyAll={applyToAll}
           canApplyAll={canApplyAll}
           applying={applying}
@@ -450,32 +427,54 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         </p>
       )}
 
-      <article className="paper styled-paper" data-mode={style.mode} style={styleVars(style)} hidden={view !== "edit"}>
+      <article className="paper styled-paper" data-mode={style.mode} data-caps={hasSmallCaps(style.headingFont)} style={styleVars(style)} hidden={view !== "edit"}>
         <h1 className="paper-name">
           <EditableText value={resume.name} onChange={(v) => set({ name: v })} />
         </h1>
-        <p className="paper-contact">
-          {style.mode !== "formal" && <Mail size={13} className="contact-icon" aria-hidden="true" />}
-          <EditableText value={resume.email} onChange={(v) => set({ email: v })} placeholder="Email" />
-          {style.mode === "formal" ? <span className="paper-contact-sep" aria-hidden="true">/</span> : <Phone size={13} className="contact-icon" aria-hidden="true" />}
-          <EditableText value={resume.phone} onChange={(v) => set({ phone: v })} placeholder="Phone" />
-        </p>
+        {latex ? (
+          <>
+            <p className="tpl-headline">
+              <EditableText value={resume.headline} onChange={(v) => set({ headline: v })} placeholder="Headline, e.g. Software Engineer" />
+            </p>
+            <p className="paper-contact tpl-contact">
+              {[
+                ["phone", "Phone", resume.phone, (v) => set({ phone: v })],
+                ["email", "Email", resume.email, (v) => set({ email: v })],
+                ["website", "Website", resume.links?.website, (v) => set({ links: { ...resume.links, website: v } })],
+                ["linkedin", "LinkedIn link", resume.links?.linkedin, (v) => set({ links: { ...resume.links, linkedin: v } })],
+                ["github", "GitHub link", resume.links?.github, (v) => set({ links: { ...resume.links, github: v } })]
+              ].map(([key, label, value, onChange], i) => (
+                <span key={key} className={`tpl-contact-item${value ? "" : " is-empty"}`}>
+                  {i > 0 && <span className="paper-contact-sep" aria-hidden="true">|</span>}
+                  <EditableText value={value} onChange={onChange} placeholder={label} />
+                </span>
+              ))}
+            </p>
+          </>
+        ) : (
+          <p className="paper-contact">
+            {style.mode !== "formal" && <Mail size={13} className="contact-icon" aria-hidden="true" />}
+            <EditableText value={resume.email} onChange={(v) => set({ email: v })} placeholder="Email" />
+            {style.mode === "formal" ? <span className="paper-contact-sep" aria-hidden="true">/</span> : <Phone size={13} className="contact-icon" aria-hidden="true" />}
+            <EditableText value={resume.phone} onChange={(v) => set({ phone: v })} placeholder="Phone" />
+          </p>
+        )}
 
         <SortableList
           ids={visibleSections}
           onMove={moveSection}
-          getName={sectionTitle}
-          renderOverlay={(id) => sectionTitle(id)}
+          getName={(id) => sectionTitle(id, mode)}
+          renderOverlay={(id) => sectionTitle(id, mode)}
         >
           {(id, index, drop) => (
             <SortableItem key={id} id={id} as="section" className="paper-section" drop={drop}>
               {({ handle }) => (
                 <>
                   <h2 className="paper-h">
-                    <span>{sectionTitle(id)}</span>
+                    <span>{sectionTitle(id, mode)}</span>
                     <ReorderTools
                       handle={handle}
-                      name={`the ${sectionTitle(id)} section`}
+                      name={`the ${sectionTitle(id, mode)} section`}
                       index={index}
                       count={visibleSections.length}
                       onMove={moveSection}

@@ -330,6 +330,9 @@ button, input, textarea {
   letter-spacing: -0.01em;
   margin: 0 0 12px;
 }
+.form-more > summary { cursor: pointer; list-style-position: outside; margin-left: 16px; }
+.form-more > summary .field-hint { font-size: 13px; }
+.form-more[open] > summary { margin-bottom: 12px; }
 .field { display: block; margin-bottom: 12px; }
 .field-label {
   display: block;
@@ -1730,6 +1733,11 @@ textarea.editable-input { min-height: 64px; resize: vertical; }
 @font-face { font-family: "ra-roboto"; src: url("/fonts/roboto-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
 @font-face { font-family: "ra-roboto"; src: url("/fonts/roboto-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: "ra-roboto"; src: url("/fonts/roboto-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-latin-modern"; src: url("/fonts/latin-modern-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-latin-modern"; src: url("/fonts/latin-modern-400-italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-latin-modern"; src: url("/fonts/latin-modern-700-normal.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "ra-latin-modern"; src: url("/fonts/latin-modern-700-italic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "ra-latin-modern-caps"; src: url("/fonts/latin-modern-caps-400-normal.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 
 /* ---------- Design settings in the edit view ---------- */
 .styled-paper {
@@ -1913,6 +1921,42 @@ textarea.editable-input { min-height: 64px; resize: vertical; }
 }
 .level-dot.is-on { background: var(--r-accent); }
 .level-dot:focus-visible { outline: 2px solid #1b1f27; outline-offset: 2px; }
+/* LaTeX template in the edit view: centred header, small-caps headings, title rows with right-aligned details */
+.styled-paper[data-mode="latex"] { padding: 40px 44px; }
+.styled-paper[data-mode="latex"] .paper-name { text-align: center; margin-bottom: 2px; }
+.tpl-headline { text-align: center; font-style: italic; margin: 0; }
+.tpl-contact { text-align: center; }
+.tpl-contact .paper-contact-sep { margin: 0 6px; }
+.tpl-contact .editable:not(:has(.editable-empty)) { text-decoration: underline; text-underline-offset: 2px; }
+.tpl-contact-item:first-child .editable { text-decoration: none; }
+.tpl-contact-item.is-empty { opacity: 0.75; }
+.styled-paper[data-mode="latex"] .paper-h { font-family: "ra-latin-modern-caps", var(--r-head-font), var(--font-paper); margin-bottom: 0.45em; }
+.styled-paper[data-mode="latex"]:not([data-caps="true"]) .paper-h { font-variant: small-caps; font-family: var(--r-head-font), var(--font-paper); }
+.styled-paper[data-mode="latex"] .paper-list { padding-left: 1.4em; list-style: none; }
+/* On desktop, an entry's remove and move controls sit in the left margin so its rows stay intact */
+@media (pointer: fine) and (min-width: 721px) {
+  .styled-paper[data-mode="latex"] .paper-entry > .remove-x { position: absolute; left: -2.6em; top: 0.1em; padding: 0; }
+  .styled-paper[data-mode="latex"] .paper-entry > .reorder-tools { position: absolute; left: -5.6em; top: 0; margin: 0; }
+}
+.styled-paper[data-mode="latex"] .paper-entry { margin-bottom: 0.35em; }
+.tpl-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.tpl-left { min-width: 0; }
+.tpl-right { flex: none; text-align: right; }
+.tpl-sub { font-size: var(--r-sub-size); }
+.tpl-sub strong { font-family: var(--r-head-font), var(--font-paper); }
+.tpl-small { font-size: var(--r-body-size); }
+.tpl-sep { margin: 0 0.5em; font-style: normal; color: #5a6270; }
+.tpl-link .editable:not(:has(.editable-empty)) { font-weight: 700; text-decoration: underline; }
+.tpl-meta { display: block; font-size: 0.9em; color: #6b7280; }
+.tpl-bullets { margin: 0.1em 0 0; padding-left: 2.2em; list-style: disc; }
+.tpl-bullets li { margin: 0; }
+.tpl-skills { display: grid; gap: 0.1em; }
+.tpl-skill-line { line-height: var(--r-line); }
+.tpl-skill { white-space: nowrap; }
+.tpl-skill .remove-x { margin-left: 1px; }
+.tpl-inline-add { margin-left: 6px; font-size: 0.85em; }
+.editable-hint { display: block; font-size: 12px; color: #6b7280; margin-top: 2px; }
+
 .mode-banner {
   max-width: 720px;
   margin: 0 auto 10px;
@@ -1925,7 +1969,7 @@ textarea.editable-input { min-height: 64px; resize: vertical; }
   box-sizing: border-box;
 }
 
-.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .mode-card {
   display: grid;
   gap: 4px;
@@ -1942,7 +1986,7 @@ textarea.editable-input { min-height: 64px; resize: vertical; }
 .mode-name { font-size: 14px; font-weight: 700; color: var(--ink); }
 .mode-hint { font-size: 12px; line-height: 1.35; }
 .mode-safety { font-size: 11.5px; font-weight: 600; }
-.mode-safety.is-formal, .mode-safety.is-modern { color: var(--ok); }
+.mode-safety.is-latex, .mode-safety.is-formal, .mode-safety.is-modern { color: var(--ok); }
 .mode-safety.is-creative { color: var(--warn); }
 .accent-row { margin-top: 12px; }
 .swatches { grid-column: 2 / -1; display: flex; gap: 8px; }

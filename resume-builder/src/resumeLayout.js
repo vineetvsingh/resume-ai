@@ -1,30 +1,46 @@
 // Shared resume layout settings, read by both the on-screen preview and the PDF export.
 // Settings live inside the resume data (resume.settings), so they save with the resume.
 
+// `latex` is the heading the LaTeX template uses; `optional` sections only show once they have entries
 export const SECTIONS = [
   { id: "summary", title: "Summary" },
   { id: "education", title: "Education" },
-  { id: "skills", title: "Skills" },
+  { id: "skills", title: "Skills", latex: "Technical Skills" },
   { id: "projects", title: "Projects" },
-  { id: "experience", title: "Experience" }
+  { id: "experience", title: "Experience" },
+  { id: "certifications", title: "Certifications", optional: true },
+  { id: "achievements", title: "Achievements", optional: true },
+  { id: "openSource", title: "Open Source Contributions", optional: true }
 ]
 
 export const DEFAULT_SECTION_ORDER = SECTIONS.map((s) => s.id)
+// The order in resume_template.tex
+export const LATEX_SECTION_ORDER = ["summary", "education", "skills", "certifications", "achievements", "experience", "openSource", "projects"]
+export const defaultOrderFor = (mode) => (mode === "latex" ? LATEX_SECTION_ORDER : DEFAULT_SECTION_ORDER)
 
-export const sectionTitle = (id) => SECTIONS.find((s) => s.id === id)?.title || id
-
-// The saved order, cleaned up: unknown ids dropped, missing sections appended in default order
-export function getSectionOrder(resume) {
-  const saved = Array.isArray(resume?.settings?.sectionOrder) ? resume.settings.sectionOrder : []
-  const known = saved.filter((id, i) => DEFAULT_SECTION_ORDER.includes(id) && saved.indexOf(id) === i)
-  return [...known, ...DEFAULT_SECTION_ORDER.filter((id) => !known.includes(id))]
+export const sectionTitle = (id, mode) => {
+  const s = SECTIONS.find((x) => x.id === id)
+  return (mode === "latex" && s?.latex) || s?.title || id
 }
 
-export const isDefaultOrder = (order) => order.every((id, i) => id === DEFAULT_SECTION_ORDER[i])
+// The list each optional section keeps its entries in
+export const SECTION_LISTS = { certifications: "certifications", achievements: "achievements", openSource: "openSource" }
 
-// Whether a section has anything to show (Summary is hidden when empty, as before)
-export function sectionHasContent(resume, id) {
+// The saved order, cleaned up: unknown ids dropped, missing sections appended in the mode's default order
+export function getSectionOrder(resume, mode) {
+  const fallback = defaultOrderFor(mode)
+  const saved = Array.isArray(resume?.settings?.sectionOrder) ? resume.settings.sectionOrder : []
+  const known = saved.filter((id, i) => fallback.includes(id) && saved.indexOf(id) === i)
+  return [...known, ...fallback.filter((id) => !known.includes(id))]
+}
+
+export const isDefaultOrder = (order, mode) => order.every((id, i) => id === defaultOrderFor(mode)[i])
+
+// Whether the edit view shows a section. Summary is hidden when empty, as before. The optional sections
+// show in LaTeX mode (so entries can be added) and otherwise only once they have entries.
+export function sectionHasContent(resume, id, mode) {
   if (id === "summary") return Boolean(resume?.summary)
+  if (SECTION_LISTS[id]) return mode === "latex" || (resume?.[SECTION_LISTS[id]] || []).length > 0
   return true
 }
 
