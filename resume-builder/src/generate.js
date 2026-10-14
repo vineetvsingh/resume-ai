@@ -39,7 +39,7 @@ Rules:
 ${withSummary ? "" : "- Do not write a summary.\n"}- Do not mention nationality.
 
 Return ONLY a JSON object with no markdown or backticks:
-{"headline":""${withSummary ? ',"summary":""' : ""},"skillsList":[""],"skillCategories":{"skill":"Category"},"experienceList":[{"role":"","company":"","location":"","dates":"","desc":"First bullet\\nSecond bullet"}],"projectsList":[{"name":"","tech":"","link":"","desc":""}],"certifications":[{"name":"","issuer":""}],"achievements":[{"title":"","desc":"","link":"","year":""}],"openSource":[{"name":"","tech":"","link":"","desc":""}]}`
+{"headline":""${withSummary ? ',"summary":""' : ""},"skillsList":[""],"skillCategories":{"skill":"Category"},"experienceList":[{"role":"","company":"","location":"","dates":"","desc":""}],"projectsList":[{"name":"","tech":"","link":"","desc":""}],"certifications":[{"name":"","issuer":""}],"achievements":[{"title":"","desc":"","link":"","year":""}],"openSource":[{"name":"","tech":"","link":"","desc":""}]}`
 }
 
 const str = (v) => (typeof v === "string" ? v.trim() : "")

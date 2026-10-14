@@ -12,7 +12,7 @@ const row = (left, right, className = "") => (
 )
 
 // Edit-view sections for the LaTeX template's fields. `entryList` is the preview's sortable list builder.
-// In the other design modes (`latex` false) only the optional sections come from here.
+// In the other design modes (`latex` false) only education and the optional sections come from here.
 export function templateSections({ resume, set, entryList, latex }) {
   // An editable field of entry i in a list
   const field = (list, setList, i, key, placeholder) => (
@@ -44,6 +44,33 @@ export function templateSections({ resume, set, entryList, latex }) {
   }
 
   const sections = {
+    education: () => {
+      const list = educationEntries(resume)
+      // Older parts of the app read the first school as one line, so keep that copy in step
+      const setList = (next) => set({ educationList: next, education: educationLine(next) })
+      const f = (i, k, placeholder) => field(list, setList, i, k, placeholder)
+      return entryList({
+        key: "educationList", label: "education", list, setList,
+        empty: { school: "University name", location: "", degree: "", score: "", dates: "", coursework: "" },
+        entryName: (e) => e?.school,
+        renderEntry: (e, i) => (
+          <>
+            {row(<strong>{f(i, "school", "University name")}</strong>, latex && f(i, "location", "City, Country"), "tpl-sub")}
+            {row(
+              <em>{f(i, "degree", "Degree and major")}<span className="tpl-sep">—</span><strong>{f(i, "score", "CGPA")}</strong></em>,
+              <em>{f(i, "dates", "Mon YYYY – Mon YYYY")}</em>,
+              "tpl-small"
+            )}
+            {latex && (
+              <ul className="tpl-bullets">
+                <li>Relevant Coursework: {f(i, "coursework", "Course 1, Course 2, Course 3")}</li>
+              </ul>
+            )}
+          </>
+        )
+      })
+    },
+
     openSource: () => projectLike("openSource", "contribution", "PR", { name: "org/repo: What the PR did", tech: "", link: "", desc: "" }),
 
     certifications: () => {
@@ -79,31 +106,6 @@ export function templateSections({ resume, set, entryList, latex }) {
 
   return {
     ...sections,
-
-    education: () => {
-      const list = educationEntries(resume)
-      // Older parts of the app read the first school as one line, so keep that copy in step
-      const setList = (next) => set({ educationList: next, education: educationLine(next) })
-      const f = (i, k, placeholder) => field(list, setList, i, k, placeholder)
-      return entryList({
-        key: "educationList", label: "education", list, setList,
-        empty: { school: "University name", location: "", degree: "", score: "", dates: "", coursework: "" },
-        entryName: (e) => e?.school,
-        renderEntry: (e, i) => (
-          <>
-            {row(<strong>{f(i, "school", "University name")}</strong>, f(i, "location", "City, Country"), "tpl-sub")}
-            {row(
-              <em>{f(i, "degree", "Degree and major")}<span className="tpl-sep">—</span><strong>{f(i, "score", "CGPA")}</strong></em>,
-              <em>{f(i, "dates", "Mon YYYY – Mon YYYY")}</em>,
-              "tpl-small"
-            )}
-            <ul className="tpl-bullets">
-              <li>Relevant Coursework: {f(i, "coursework", "Course 1, Course 2, Course 3")}</li>
-            </ul>
-          </>
-        )
-      })
-    },
 
     skills: () => {
       const skills = resume.skillsList || []

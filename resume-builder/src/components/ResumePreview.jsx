@@ -240,11 +240,6 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
         <EditableText value={resume.summary} multiline block onChange={(v) => set({ summary: v })} />
       </p>
     ),
-    education: () => (
-      <p>
-        <EditableText value={resume.education} onChange={(v) => set({ education: v })} />
-      </p>
-    ),
     skills: () => style.mode === "creative" ? (
       <ul className="skill-levels">
         {(resume.skillsList || []).map((skill, i) => (
@@ -345,7 +340,7 @@ export default function ResumePreview({ resume, onScoreClick, onSaveClick, onSav
       ),
       empty: { role: "New role", company: "Company", desc: "Description" }
     }),
-    // LaTeX mode replaces these with the template's editors; the optional sections come from there in every mode
+    // LaTeX mode replaces these with the template's editors; education and the optional sections come from there in every mode
     ...templateSections({ resume, set, entryList, latex })
   }
 
