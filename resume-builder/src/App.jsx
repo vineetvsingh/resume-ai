@@ -22,7 +22,7 @@ const TABS = ["Build", "ATS Score", "Suggestions"]
 
 const TAB_COPY = {
   "Build": { title: "Build your resume", lede: "Add your details and we will draft a clean, one-page resume you can edit line by line." },
-  "ATS Score": { title: "Check your ATS match", lede: "Paste a job description to see which keywords your resume already covers and which it misses." },
+  "ATS Score": { title: "Check your ATS match", lede: "Check the resume you built here, or upload one you already have. Add a job description to see which keywords it covers and which it misses." },
   "Suggestions": { title: "Improve your resume", lede: "Describe the role you want. You will get specific rewrites for weak or missing lines." }
 }
 
@@ -214,19 +214,34 @@ Return ONLY a JSON object with no markdown or backticks:
     setBuildLoading(false)
   }
 
-  async function handleScore(jd) {
-    if (!jd || !resume) return
+  // Scores the resume on screen, or an uploaded file's text, against a job description.
+  // An upload with no job description gets a general review instead.
+  async function handleScore(jd, upload) {
+    jd = jd?.trim() || ""
+    if (upload ? !upload.text : !jd || !resume) return
+    const general = Boolean(upload && !jd)
+    const resumeText = upload ? upload.text.slice(0, 12000) : JSON.stringify(contentOnly(resume))
     setScoreLoading(true)
     setScoreError(null)
     try {
-      const prompt = `Compare this resume against the job description.
-Resume: ${JSON.stringify(contentOnly(resume))}
-Job Description: ${jd}
+      const prompt = general
+        ? `Review this resume, extracted as plain text from the candidate's file, for an entry-level tech job.
+Resume: ${resumeText}
+
+Judge how well an ATS and a recruiter would rate it: clear standard sections, specific projects and experience, skills listed plainly, results stated where the resume gives them. Base every point on what is actually in the resume.
+
+Return ONLY a JSON object with no markdown or backticks:
+{"score":70,"summary":"2 sentence assessment","strengths":["up to 4 short points"],"fixes":["up to 5 specific changes, each naming the line or section"]}`
+        : `Compare this resume against the job description.
+Resume: ${resumeText}
+Job Description: ${jd.slice(0, 8000)}
 
 Return ONLY a JSON object with no markdown or backticks:
 {"score":75,"foundKeywords":["keyword1"],"missingKeywords":["keyword2"],"summary":"2 sentence assessment"}`
 
-      const response = await callGroq(prompt, "You are an ATS analyzer. Return only valid JSON, no markdown, no backticks.")
+      const response = await callGroq(prompt, general
+        ? "You are a strict, fair resume reviewer. Return only valid JSON, no markdown, no backticks."
+        : "You are an ATS analyzer. Return only valid JSON, no markdown, no backticks.")
       const clean = response.replace(/```json|```/g, "").trim()
       let data
       try {
@@ -239,13 +254,15 @@ Return ONLY a JSON object with no markdown or backticks:
           throw new Error("Could not parse AI response")
         }
       }
-      setScoreResult(data)
-      if (user && typeof data.score === "number") {
+      data.score = Math.max(0, Math.min(100, Math.round(Number(data.score) || 0)))
+      setScoreResult({ ...data, source: upload ? "upload" : "builder", general })
+      // General reviews have no job to track, so only job matches go to the dashboard history
+      if (user && !general) {
         api("/scores", {
           method: "POST",
           body: {
-            resumeId: loadedResumeId,
-            resumeName: resume.name,
+            resumeId: upload ? null : loadedResumeId,
+            resumeName: upload ? upload.name : resume.name,
             jobDescription: jd,
             score: data.score,
             foundKeywords: data.foundKeywords,
@@ -818,7 +835,7 @@ Return ONLY a JSON object with no markdown or backticks:
             onNewVersion={(r) => setVersionDialog({ mode: "create", source: r })}
             onEditDetails={(r) => setVersionDialog({ mode: "edit", source: r })}
             onNewResume={startNewResume}
-            onCheckAts={() => openBuilder(resume ? "ATS Score" : "Build")}
+            onCheckAts={() => openBuilder("ATS Score")}
             onEditProfile={openProfile}
             onPlan={openRoadmap}
             onRetry={loadDashboard}
@@ -852,6 +869,7 @@ Return ONLY a JSON object with no markdown or backticks:
               <ATSScorer
                 key={loadedResumeId || "unsaved"}
                 initialJd={resumeMeta?.target?.jobDescription || ""}
+                hasResume={Boolean(resume)}
                 onScore={handleScore}
                 loading={scoreLoading}
                 result={scoreResult}

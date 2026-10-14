@@ -201,8 +201,8 @@ export default function Dashboard({ data, error, currentResume, onContinue, onOp
     },
     {
       title: "Run an ATS check",
-      text: "Paste a job description to see how well your resume matches it.",
-      action: currentResume ? "Check ATS match" : "Build a resume first",
+      text: "Check a resume you built here or upload your own, against a job description.",
+      action: currentResume ? "Check ATS match" : "Upload or check a resume",
       icon: Target,
       done: checks.length > 0,
       onClick: onCheckAts
