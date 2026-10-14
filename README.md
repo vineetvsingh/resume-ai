@@ -10,6 +10,7 @@ Built as a final year B.Tech project at Shambhunath Institute of Engineering Tec
 
 - **AI Resume Generation** — Generate professional resumes from basic input using the GPT-OSS 20B model via Groq
 - **ATS Score Analysis** — Paste any job description and get a match score with found and missing keywords
+- **Upload & Check a Resume** — Upload an existing resume (PDF, Word .docx or text) to see whether ATS software can read it, then score it against a job description or get a general review
 - **AI Suggestions** — Get specific, actionable improvements for your resume based on target roles
 - **Inline Editing** — Click any section of the generated resume to edit it directly
 - **PDF Export** — Download your resume as a clean PDF file
@@ -27,6 +28,7 @@ Built as a final year B.Tech project at Shambhunath Institute of Engineering Tec
 - Tailwind CSS
 - Lucide React (icons)
 - jsPDF (PDF generation)
+- pdf.js and mammoth (reading uploaded PDF and Word resumes in the browser)
 
 **Backend**
 - Node.js
@@ -43,6 +45,7 @@ Built as a final year B.Tech project at Shambhunath Institute of Engineering Tec
 
 ## Recent Updates
 
+- **Upload a resume to check it.** The ATS Score tab can now check a resume you already have, not just one built in the app. The file is read in the browser and never stored. It is checked straight away for readable text (scanned PDFs fail), email, phone, standard section headings, page count, and tables or images. Add a job description for a match score, or leave it empty for a general review of what works and what to fix.
 - **Fixed resume generation 500 errors.** Groq removed `llama-3.1-8b-instant`, so every AI request failed. The backend now uses `openai/gpt-oss-20b`.
 - **Fixed empty AI results.** The new model used almost its whole token budget on internal reasoning and returned no JSON. Build, ATS Score and Suggestions quietly fell back to empty results. `reasoning_effort` is now `"low"` and `max_tokens` is raised from 1000 to 1500.
 - **Fixed PDF export clipping.** Long Projects and Experience sections no longer get cut off in the downloaded PDF.
@@ -56,6 +59,7 @@ resume-ai/
 ├── resume-builder/          Frontend (React + Vite)
 │   ├── src/
 │   │   ├── App.jsx          Main application
+│   │   ├── resumeFile.js    Reads uploaded resumes and runs the readability checks
 │   │   ├── components/
 │   │   │   ├── ResumeForm.jsx
 │   │   │   ├── ResumePreview.jsx
@@ -155,7 +159,7 @@ npm run dev
 2. On clicking Generate, the frontend sends a structured prompt to the backend.
 3. The backend forwards the prompt to Groq's API with the API key (never exposed to the browser).
 4. Groq returns a structured JSON resume which gets rendered in the preview panel.
-5. Users can paste a job description in the ATS Score tab to see how their resume matches.
+5. Users can paste a job description in the ATS Score tab to see how their resume matches. They can also upload an existing resume there: its text is extracted in the browser, checked for ATS readability, and sent for scoring.
 6. The Suggestions tab provides AI-generated improvements for specific roles.
 7. Resumes can be saved to MongoDB and loaded back into the editor anytime.
 
