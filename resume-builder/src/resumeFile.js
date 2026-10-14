@@ -15,17 +15,22 @@ function kindOf(file) {
 
 async function readPdf(file) {
   // Loaded only when someone uploads a PDF, so the app itself stays small
-  const pdfjs = await import("pdfjs-dist")
-  const { default: workerSrc } = await import("pdfjs-dist/build/pdf.worker.min.mjs?url")
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  const { default: workerSrc } = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url")
   pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
-  const pages = []
-  for (let i = 1; i <= doc.numPages; i++) {
-    const content = await (await doc.getPage(i)).getTextContent()
-    pages.push(content.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join(""))
+  const task = pdfjs.getDocument({ data: await file.arrayBuffer() })
+  try {
+    const doc = await task.promise
+    const pages = []
+    for (let i = 1; i <= doc.numPages; i++) {
+      const content = await (await doc.getPage(i)).getTextContent()
+      pages.push(content.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join(""))
+    }
+    return { text: pages.join("\n"), pages: doc.numPages, tables: 0, images: 0 }
+  } finally {
+    // Frees the PDF worker, whether reading worked or not
+    task.destroy()
   }
-  await doc.destroy()
-  return { text: pages.join("\n"), pages: doc.numPages, tables: 0, images: 0 }
 }
 
 async function readDocx(file) {
@@ -56,6 +61,7 @@ export async function readResumeFile(file) {
       : kind === "docx" ? await readDocx(file)
       : { text: await file.text(), pages: null, tables: 0, images: 0 }
   } catch (e) {
+    console.error("Reading the uploaded resume failed:", e)
     if (e?.name === "PasswordException") throw new Error("This PDF is password-protected. Remove the password and upload it again.", { cause: e })
     throw new Error("Could not read this file. It may be damaged. Try exporting it again as PDF.", { cause: e })
   }

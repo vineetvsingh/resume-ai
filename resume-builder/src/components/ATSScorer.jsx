@@ -86,9 +86,9 @@ export default function ATSScorer({ onScore, loading, result, onPlan, initialJd 
               </button>
             </div>
             <h3 className="kw-title">Can ATS software read it?</h3>
-            <ul className="checks">
+            <ul className="ats-checks">
               {upload.checks.map((c) => (
-                <li key={c.id} className={`check is-${c.status}`}>
+                <li key={c.id} className={`ats-check is-${c.status}`}>
                   {CHECK_ICONS[c.status]}
                   <div>
                     <strong>{c.title}</strong>
